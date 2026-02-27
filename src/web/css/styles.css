@@ -203,14 +203,18 @@ input[type="submit"]:hover,
 }
 
 .game-mode h3 {
-    margin: 0 0 10px 0;
-    font-size: 18px;
+    margin: 0 0 20px 0;
+    font-size: 19px;
 }
 
 .game-mode p {
-    margin: 0;
-    font-size: 14px;
-    opacity: 0.8;
+    margin: 0 0 6px 0;
+    font-size: 15px;
+    opacity: 0.9;
+}
+
+.game-mode p:last-child {
+    margin-bottom: 0;
 }
 
 /* Chessboard.js container */
@@ -714,23 +718,26 @@ input[type="submit"]:hover,
     align-items: flex-start;
 }
 
-/* Control buttons above board, in the margin between title and board */
-.board-controls-left,
-.board-controls-right {
+/* Toolbar container for all controls above board */
+.board-toolbar {
     position: absolute;
-    top: -34px;
+    top: -43px;
+    left: 0;
+    right: 0;
+    height: 43px;
     display: flex;
-    flex-direction: row;
-    gap: 10px;
+    justify-content: space-between;
+    align-items: center;
     z-index: 100;
 }
 
-.board-controls-left {
-    left: 0;
-}
-
+/* Control button groups */
+.board-controls-left,
 .board-controls-right {
-    right: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    flex-shrink: 0;
 }
 
 .board-ctrl-btn {
@@ -762,27 +769,16 @@ input[type="submit"]:hover,
     border-color: #ec8703;
 }
 
-/* Game action buttons (resign / draw) — centered between left/right and nav */
+/* Game action buttons (resign / draw) */
 .board-controls-action-left,
 .board-controls-action-right {
-    position: absolute;
-    top: -34px;
     display: flex;
-    z-index: 100;
-}
-
-.board-controls-action-left {
-    left: 25%;
-    transform: translateX(-50%);
-}
-
-.board-controls-action-right {
-    right: 25%;
-    transform: translateX(50%);
+    flex-shrink: 0;
 }
 
 .game-action-btn {
     width: auto !important;
+    min-width: 28px;
     padding: 0 8px !important;
     gap: 4px;
     font-size: 11px !important;
@@ -811,10 +807,16 @@ input[type="submit"]:hover,
 }
 
 /* Focus mode (fullscreen board) */
+.focus-mode {
+    padding: 0 !important;
+    overflow: hidden;
+    height: 100vh;
+}
+
 .focus-mode .container {
     max-width: 95vmin;
-    padding: 10px;
-    padding-top: 40px;
+    padding: 0 10px;
+    padding-top: 34px;
     background: transparent;
     box-shadow: none;
 }
@@ -826,6 +828,11 @@ input[type="submit"]:hover,
 .focus-mode .board-wrapper {
     width: 95vmin;
     height: 95vmin;
+}
+
+.focus-mode .board-toolbar {
+    top: -34px;
+    height: 34px;
 }
 
 .focus-mode .chessboard-container {
@@ -1037,15 +1044,12 @@ input[type="submit"]:hover,
 
 /* Move navigation controls (centered above board) */
 .board-controls-center {
-    position: absolute;
-    top: -34px;
-    left: 50%;
-    transform: translateX(-50%);
     display: flex;
     flex-direction: row;
     align-items: center;
     gap: 4px;
-    z-index: 100;
+    flex-shrink: 1;
+    min-width: 0;
 }
 
 .move-counter {
@@ -1471,4 +1475,16 @@ input[type="submit"]:hover,
     width: 100%;
     height: 100%;
     object-fit: contain;
+}
+
+@media (max-width: 425px) {
+
+    /* Hide text labels on action buttons, keep icons */
+    .game-action-btn .action-label {
+        display: none;
+    }
+
+    .game-action-btn {
+        padding: 0 !important;
+    }
 }

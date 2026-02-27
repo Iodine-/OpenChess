@@ -113,26 +113,30 @@
             <div id="board" class="chessboard-container"></div>
 
             <!-- Control buttons in margin above board -->
-            <div class="board-controls-left">
-                <button id="flipBtn" class="board-ctrl-btn" title="Flip board">⇅</button>
-                <button id="focusBtn" class="board-ctrl-btn" title="Focus mode">⛶</button>
-            </div>
-            <div class="board-controls-action-left">
-                <button id="drawBtn" class="board-ctrl-btn game-action-btn" title="Offer draw">½ Draw</button>
-            </div>
-            <div class="board-controls-center">
-                <button id="navFirst" class="board-ctrl-btn nav-btn" title="First move">⏮</button>
-                <button id="navPrev" class="board-ctrl-btn nav-btn" title="Previous move">◀</button>
-                <span id="moveCounter" class="move-counter">live</span>
-                <button id="navNext" class="board-ctrl-btn nav-btn" title="Next move">▶</button>
-                <button id="navLast" class="board-ctrl-btn nav-btn" title="Last move / Live">⏭</button>
-            </div>
-            <div class="board-controls-action-right">
-                <button id="resignBtn" class="board-ctrl-btn game-action-btn" title="Resign">⚐ Resign</button>
-            </div>
-            <div class="board-controls-right">
-                <button id="gameSelectorBtn" class="board-ctrl-btn" title="Game history">↺</button>
-                <button id="settingsBtn" class="board-ctrl-btn" title="Settings">⚙</button>
+            <div class="board-toolbar">
+                <div class="board-controls-left">
+                    <button id="flipBtn" class="board-ctrl-btn" title="Flip board">⇅</button>
+                    <button id="focusBtn" class="board-ctrl-btn" title="Focus mode">⛶</button>
+                </div>
+                <div class="board-controls-action-left">
+                    <button id="drawBtn" class="board-ctrl-btn game-action-btn" title="Offer draw">½ <span
+                            class="action-label">Draw</span></button>
+                </div>
+                <div class="board-controls-center">
+                    <button id="navFirst" class="board-ctrl-btn nav-btn" title="First move">⏮</button>
+                    <button id="navPrev" class="board-ctrl-btn nav-btn" title="Previous move">◀</button>
+                    <span id="moveCounter" class="move-counter">live</span>
+                    <button id="navNext" class="board-ctrl-btn nav-btn" title="Next move">▶</button>
+                    <button id="navLast" class="board-ctrl-btn nav-btn" title="Last move / Live">⏭</button>
+                </div>
+                <div class="board-controls-action-right">
+                    <button id="resignBtn" class="board-ctrl-btn game-action-btn" title="Resign">⚐ <span
+                            class="action-label">Resign</span></button>
+                </div>
+                <div class="board-controls-right">
+                    <button id="gameSelectorBtn" class="board-ctrl-btn" title="Game history">↺</button>
+                    <button id="settingsBtn" class="board-ctrl-btn" title="Settings">⚙</button>
+                </div>
             </div>
         </div>
 
