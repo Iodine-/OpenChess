@@ -118,8 +118,6 @@ OtaUpdateInfo OtaUpdater::checkForUpdate() {
     return info;
   }
 
-  Serial.println("OTA: Checking for updates at " OTA_GITHUB_API_URL);
-
   HTTPClient http;
   if (!beginHttpGet(http, OTA_GITHUB_API_URL)) return info;
 
@@ -141,14 +139,13 @@ OtaUpdateInfo OtaUpdater::checkForUpdate() {
     return info;
   }
 
-  Serial.printf("OTA: Current version: %s, Latest release: %s\n", FIRMWARE_VERSION, tagName.c_str());
-
   info.version = tagName;
   if (!isNewerVersion(FIRMWARE_VERSION, tagName)) {
-    Serial.println("OTA: Firmware is up to date");
+    Serial.printf("OTA: Up to date (v%s)\n", FIRMWARE_VERSION);
     return info;
   }
   info.available = true;
+  Serial.printf("OTA: Update available: v%s (current: %s)\n", info.version.c_str(), FIRMWARE_VERSION);
 
   // Find firmware.bin and web_assets.tar in release assets
   JsonArray assets = doc["assets"];
@@ -160,10 +157,6 @@ OtaUpdateInfo OtaUpdater::checkForUpdate() {
     else if (name == "web_assets.tar")
       info.webAssetsUrl = url;
   }
-
-  Serial.printf("OTA: Update available: v%s\n", info.version.c_str());
-  if (info.firmwareUrl.length()) Serial.println("OTA: Firmware URL: " + info.firmwareUrl);
-  if (info.webAssetsUrl.length()) Serial.println("OTA: Web assets URL: " + info.webAssetsUrl);
 
   return info;
 }
@@ -374,15 +367,8 @@ void OtaUpdater::applyUpdate(const OtaUpdateInfo& info) {
 }
 
 void OtaUpdater::autoUpdate(OtaUpdateInfo& info, bool apply) {
-  Serial.println("OTA: Checking for updates...");
-
   info = checkForUpdate();
-  if (!info.available) {
-    Serial.println("OTA: No update available");
-    return;
-  }
-
-  Serial.printf("OTA: New version available: v%s (current: %s)\n", info.version.c_str(), FIRMWARE_VERSION);
-  if (apply)
+  if (apply && info.available) {
     applyUpdate(info);
+  }
 }

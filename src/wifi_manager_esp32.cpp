@@ -15,7 +15,7 @@ WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriv
 }
 
 void WiFiManagerESP32::begin() {
-  Serial.println("=== Starting OpenChess WiFi Manager (ESP32) ===");
+  Serial.println("=== Starting OpenChess WiFi Manager ===");
 
   if (!ChessUtils::ensureNvsInitialized()) {
     Serial.println("NVS init failed - WiFi credentials not loaded");
@@ -198,13 +198,17 @@ void WiFiManagerESP32::handleConnectWiFi(AsyncWebServerRequest* request) {
     }
   }
 
-  if (newWifiSSID.length() >= 1 && newWifiPassword.length() >= 5 && (newWifiSSID != wifiSSID || newWifiPassword != wifiPassword)) {
-    // Defer WiFi reconnection to the main loop to avoid blocking the async_tcp
-    // task, which would trigger the ESP32 task watchdog (WDT).
-    pendingWiFiSSID = newWifiSSID;
-    pendingWiFiPassword = newWifiPassword;
-    hasPendingWiFi = true;
-    changed = true;
+  if (newWifiSSID.length() >= 1 && newWifiPassword.length() >= 5) {
+    bool credsChanged = (newWifiSSID != wifiSSID || newWifiPassword != wifiPassword);
+    bool notConnected = (WiFi.status() != WL_CONNECTED);
+    if (credsChanged || notConnected) {
+      // Defer WiFi reconnection to the main loop to avoid blocking the async_tcp
+      // task, which would trigger the ESP32 task watchdog (WDT).
+      pendingWiFiSSID = newWifiSSID;
+      pendingWiFiPassword = newWifiPassword;
+      hasPendingWiFi = true;
+      changed = true;
+    }
   }
 
   if (changed)
@@ -515,7 +519,8 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
   Serial.println("=== Connecting to WiFi Network" + String(fromWeb ? "(from web)" : "") + " ===");
   Serial.printf("SSID: %s\nPassword: %s\n", ssid.c_str(), password.c_str());
 
-  // ESP32 can run both AP and Station modes simultaneously
+  WiFi.disconnect(false, true);
+  delay(100);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
   WiFi.setHostname("OpenChess");
@@ -528,15 +533,16 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
 
   int maxAttempts = scanAllChannels ? 30 : 15;
   for (int attempts = 0; attempts < maxAttempts; attempts++) {
+    boardDriver->showConnectingAnimation(); // 1 second delay with animation to allow time for WiFi connection
     wl_status_t st = WiFi.status();
+    Serial.printf("Connection attempt %d/%d - Status: %d\n", attempts + 1, maxAttempts, st);
     if (st == WL_CONNECTED) {
       Serial.println("Connected to WiFi!");
       return true;
     }
-    if (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL)
+    // Only trust failure statuses after a few attempts to avoid stale status from a previous connection attempt that hasn't fully cleared yet
+    if (attempts >= 4 && (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL))
       break;
-    boardDriver->showConnectingAnimation(); // 1 second delay with animation to allow time for WiFi connection
-    Serial.printf("Connection attempt %d/%d - Status: %d\n", attempts, maxAttempts, st);
   }
   Serial.println("Failed to connect to WiFi");
   return false;
