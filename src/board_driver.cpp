@@ -679,7 +679,7 @@ void BoardDriver::showConnectingAnimation() {
     setSquareLED(3, i, LedColors::Blue);
     setSquareLED(4, i, LedColors::Blue);
     showLEDs();
-    delay(100);
+    delay(125);
   }
   clearAllLEDs();
   releaseLEDs();

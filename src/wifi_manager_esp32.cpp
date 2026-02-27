@@ -510,6 +510,9 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
   Serial.printf("SSID: %s\nPassword: %s\n", ssid.c_str(), password.c_str());
 
   // ESP32 can run both AP and Station modes simultaneously
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.setHostname("OpenChess");
   WiFi.mode(WIFI_AP_STA);
   if (scanAllChannels) {
     WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
@@ -517,20 +520,20 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
   }
   WiFi.begin(ssid.c_str(), password.c_str());
 
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 10) {
-    boardDriver->showConnectingAnimation();
-    attempts++;
-    Serial.printf("Connection attempt %d/10 - Status: %d\n", attempts, WiFi.status());
+  int maxAttempts = scanAllChannels ? 30 : 15;
+  for (int attempts = 0; attempts < maxAttempts; attempts++) {
+    wl_status_t st = WiFi.status();
+    if (st == WL_CONNECTED) {
+      Serial.println("Connected to WiFi!");
+      return true;
+    }
+    if (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL)
+      break;
+    boardDriver->showConnectingAnimation(); // 1 second delay with animation to allow time for WiFi connection
+    Serial.printf("Connection attempt %d/%d - Status: %d\n", attempts, maxAttempts, st);
   }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("Connected to WiFi!");
-    return true;
-  } else {
-    Serial.println("Failed to connect to WiFi");
-    return false;
-  }
+  Serial.println("Failed to connect to WiFi");
+  return false;
 }
 
 void WiFiManagerESP32::handleGamesRequest(AsyncWebServerRequest* request) {
