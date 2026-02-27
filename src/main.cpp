@@ -64,7 +64,7 @@ void setup() {
   moveHistory.begin();
   boardDriver.beginHardware();
   wifiManager.begin();
-  boardDriver.beginCalibration();
+  boardDriver.checkCalibration();
   Serial.println();
   // Kick off NTP time sync (non-blocking, will resolve in background)
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");

@@ -35,7 +35,7 @@ static constexpr int DefaultRowColToLEDindexMap[NUM_ROWS][NUM_COLS] = {
     {63, 62, 61, 60, 59, 58, 57, 56},
 };
 
-BoardDriver::BoardDriver() : strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800), lastEnabledCol(-2), brightness(BRIGHTNESS), dimMultiplier(70), swapAxes(0), hwConfig(HardwareConfig::defaults()), calibrating(false) {
+BoardDriver::BoardDriver() : strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800), lastEnabledCol(-2), brightness(BRIGHTNESS), dimMultiplier(70), swapAxes(0), hwConfig(HardwareConfig::defaults()), calibrating(false), calibrated(false) {
   for (int i = 0; i < NUM_ROWS; i++)
     toLogicalRow[i] = i;
   for (int i = 0; i < NUM_COLS; i++)
@@ -79,11 +79,12 @@ void BoardDriver::beginHardware() {
   ledMutex = xSemaphoreCreateMutex();
   animationQueue = xQueueCreate(8, sizeof(AnimationJob));
   xTaskCreatePinnedToCore(animationWorkerTask, "AnimWorker", 4096, nullptr, 1, &animationTaskHandle, 1);
+
+  calibrated = loadCalibration();
 }
 
-void BoardDriver::beginCalibration() {
-  // Load calibration or run first-time calibration
-  if (!loadCalibration()) {
+void BoardDriver::checkCalibration() {
+  if (!calibrated) {
     bool wasSkipped = runCalibration();
     if (!wasSkipped) {
       saveCalibration();

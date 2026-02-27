@@ -159,6 +159,7 @@ class BoardDriver {
 
   // True while interactive calibration is running (guards concurrent web handler access)
   std::atomic<bool> calibrating;
+  bool calibrated;
 
   // Calibration data
   uint8_t swapAxes;
@@ -186,7 +187,7 @@ class BoardDriver {
  public:
   BoardDriver();
   void beginHardware();
-  void beginCalibration();
+  void checkCalibration();
   void readSensors();
   bool getSensorState(int row, int col);
   bool getSensorPrev(int row, int col);
