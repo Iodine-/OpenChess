@@ -118,7 +118,10 @@
 
             if (step.centerContent) card.style.textAlign = 'center';
             if (step.title) card.append(el('h3', null, step.title));
-            if (step.description) card.append(el('p', null, step.description));
+            if (step.description) card.append(el('p', { innerHTML: step.description }));
+
+            if (step.items && step.items.length)
+                step.items.forEach(item => card.insertAdjacentHTML('beforeend', item));
 
             if (step.images && step.images.length) {
                 // Demo gallery: split into rows of 2

@@ -48,8 +48,8 @@
             },
             {
                 "icon": "⚡",
-                "name": "Resistors (10k Ω)",
-                "description": "8 pcs 10k Ohm - pull-up resistors for the hall effect sensors outputs"
+                "name": "Resistors",
+                "description": "8 pcs 10k Ohm - pull-up resistors for the hall effect sensors outputs + 8 pcs 1k Ohm - for the PNP transistors' base"
             },
             {
                 "icon": "🔄",
@@ -70,6 +70,13 @@
             "title": "Schematics",
             "intro": "These diagrams show how to connect all the electronic components together. Study and understand them before you start soldering.",
             "steps": [
+                {
+                    "title": "Full Circuit",
+                    "description": "Interactive circuit diagram. Zoom and pan using the scroll wheel and left/right click. Hover on a pin to show the label. <a href=\"https:\/\/app.cirkitdesigner.com\/project\/81018bb4-8fca-487b-82c5-0471690d4d98\" target = \"_blank\">View the project on Cirkit<\/a>",
+                    "items": [
+                        "<div style=\"position: relative; width: 100%; height: 80vh;\">\r\n  <iframe src=\"https:\/\/app.cirkitdesigner.com\/project\/81018bb4-8fca-487b-82c5-0471690d4d98?view=interactive_preview\" style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;\"><\/iframe>\r\n<\/div>"
+                    ]
+                },
                 {
                     "title": "ESP32 + PCB Wiring",
                     "description": "Overview of the ESP32 connected to the main PCB - showing shift register signals, sensor rows/cols, LED data, pull-up resistors and power lines.",
