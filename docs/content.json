@@ -74,7 +74,7 @@
                     "title": "Full Circuit",
                     "description": "Interactive circuit diagram. Zoom and pan using the scroll wheel and left/right click. Hover on a pin to show the label. <a href=\"https:\/\/app.cirkitdesigner.com\/project\/81018bb4-8fca-487b-82c5-0471690d4d98\" target = \"_blank\">View the project on Cirkit<\/a>",
                     "items": [
-                        "<div style=\"position: relative; width: 100%; height: 80vh;\">\r\n  <iframe src=\"https:\/\/app.cirkitdesigner.com\/project\/81018bb4-8fca-487b-82c5-0471690d4d98?view=interactive_preview\" style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;\"><\/iframe>\r\n<\/div>"
+                        "<div style=\"position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: 70vh;\"><iframe src=\"https:\/\/app.cirkitdesigner.com\/project\/81018bb4-8fca-487b-82c5-0471690d4d98?view=interactive_preview\" style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;\"><\/iframe><\/div>"
                     ]
                 },
                 {
@@ -739,14 +739,14 @@
                 ]
             },
             {
-                "title": "2. Configure Firmware Defaults",
+                "title": "2. Configure Firmware Defaults (optional)",
                 "items": [
                     "Open the <code>.code-workspace</code> file in VS Code",
-                    "Edit GPIO pins in <code>board_driver.h</code> if you're using different pins than the default (pin order doesn't matter - calibration handles it)",
+                    "Edit GPIO pins in <code>board_driver.h</code> if you're using different pins than the default (pin order doesn't matter, calibration handles it)",
                     "Set <code>SR_INVERT_OUTPUTS</code> to <code>1</code> in <code>board_driver.h</code> if using PNP transistors",
                     "Edit your WiFi credentials in <code>wifi_manager_esp32.h</code> to give the ESP32 internet access",
                     "Set <code>WIFI_SCAN_ALL_CHANNELS</code> to <code>1</code> in <code>wifi_manager_esp32.h</code> if connecting to a mesh WiFi network",
-                    "<strong>All these settings can be changed at any time through the webUI, these are just the defaults, configuring them now is optional</strong>"
+                    "<strong>All these settings can also be changed at any time through the web interface, configuring defaults is optional</strong>"
                 ]
             },
             {
@@ -754,20 +754,27 @@
                 "items": [
                     "Connect the ESP32 via USB",
                     "Hold the <strong>BOOT</strong> button on the ESP32",
-                    "Click <strong>Upload</strong> (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd>) in VS Code",
-                    "Follow the Serial Monitor instructions on first boot to calibrate the sensor grid"
+                    "Click <strong>Upload</strong> (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd>) in VS Code"
                 ]
             },
             {
                 "title": "4. Connect to Web UI",
                 "items": [
-                    "After calibration, a WiFi access-point is created with SSID: <strong>OpenChess</strong> and Password: <strong>chess123</strong>",
-                    "Connect to this WiFi network with your phone or computer",
-                    "Open a browser and navigate to <strong>http://192.168.4.1</strong> to access the webUI"
+                    "Connect to the <strong>OpenChess</strong> WiFi (password: <strong>chess123</strong>)",
+                    "Open a browser and navigate to <strong>http://192.168.4.1</strong> to access the web interface",
+                    "Click on <strong>Hardware Configuration</strong> and set the correct pins and transistor type (PNP/NPN) <strong>BEFORE</strong> connecting wires to GPIOs. Incorrect configuration with wires connected can cause short circuits"
                 ]
             },
             {
-                "title": "5. Play!",
+                "title": "5. Calibrate",
+                "items": [
+                    "After booting (or rebooting with new pins), the board enters calibration mode",
+                    "Follow the Serial Monitor Console instructions (115200 baud) to calibrate sensors and LEDs",
+                    "Calibration data is saved and only needs to be done once"
+                ]
+            },
+            {
+                "title": "6. Play!",
                 "items": [
                     "Power on the board - LEDs light up in the center for game selection",
                     "Place a piece on a lit square:<ul><li><strong style=\"color: #2196F3;\">Blue</strong> - Human vs Human</li><li><strong style=\"color: #4CAF50;\">Green</strong> - Human vs Stockfish</li><li><strong style=\"color: #FFEB3B;\">Yellow</strong> - Online (Lichess)</li><li><strong style=\"color: #F44336;\">Red</strong> - Sensor Test</li></ul>"

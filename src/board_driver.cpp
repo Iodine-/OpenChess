@@ -35,7 +35,7 @@ static constexpr int DefaultRowColToLEDindexMap[NUM_ROWS][NUM_COLS] = {
     {63, 62, 61, 60, 59, 58, 57, 56},
 };
 
-BoardDriver::BoardDriver() : strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800), lastEnabledCol(-2), brightness(BRIGHTNESS), dimMultiplier(70), swapAxes(0), calibrationLoaded(false), hwConfig(HardwareConfig::defaults()) {
+BoardDriver::BoardDriver() : strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800), lastEnabledCol(-2), brightness(BRIGHTNESS), dimMultiplier(70), swapAxes(0), hwConfig(HardwareConfig::defaults()), calibrating(false) {
   for (int i = 0; i < NUM_ROWS; i++)
     toLogicalRow[i] = i;
   for (int i = 0; i < NUM_COLS; i++)
@@ -47,7 +47,7 @@ BoardDriver::BoardDriver() : strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800), la
     }
 }
 
-void BoardDriver::begin() {
+void BoardDriver::beginHardware() {
   // Load hardware pin configuration from NVS (must happen before any GPIO or strip init)
   loadHardwareConfig();
   // Re-initialize strip with the (possibly NVS-overridden) LED pin
@@ -79,7 +79,9 @@ void BoardDriver::begin() {
   ledMutex = xSemaphoreCreateMutex();
   animationQueue = xQueueCreate(8, sizeof(AnimationJob));
   xTaskCreatePinnedToCore(animationWorkerTask, "AnimWorker", 4096, nullptr, 1, &animationTaskHandle, 1);
+}
 
+void BoardDriver::beginCalibration() {
   // Load calibration or run first-time calibration
   if (!loadCalibration()) {
     bool wasSkipped = runCalibration();
@@ -94,6 +96,12 @@ void BoardDriver::animationWorkerTask(void* param) {
   AnimationJob job;
   while (true) {
     if (xQueueReceive(animationQueue, &job, portMAX_DELAY) == pdTRUE) {
+      // Skip animations while calibration is running on the main task
+      if (instance->calibrating.load()) {
+        if (job.stopFlag)
+          delete job.stopFlag;
+        continue;
+      }
       xSemaphoreTake(ledMutex, portMAX_DELAY);
       instance->executeAnimation(job);
       xSemaphoreGive(ledMutex);
@@ -177,7 +185,6 @@ bool BoardDriver::loadCalibration() {
     for (int col = 0; col < NUM_COLS; col++)
       ledIndexMap[row][col] = ledFlat[idx++];
   prefs.end();
-  calibrationLoaded = true;
   Serial.println("Board calibration loaded from NVS");
   return true;
 }
@@ -190,10 +197,7 @@ void BoardDriver::saveCalibration() {
   Preferences prefs;
   prefs.begin("boardCal", false);
   prefs.putUChar("ver", 1);
-  uint8_t rowPinsU8[NUM_ROWS];
-  for (int i = 0; i < NUM_ROWS; i++)
-    rowPinsU8[i] = hwConfig.rowPins[i];
-  prefs.putBytes("rowPins", rowPinsU8, sizeof(rowPinsU8));
+  prefs.putBytes("rowPins", hwConfig.rowPins, sizeof(hwConfig.rowPins));
   uint8_t srPins[3] = {hwConfig.srClkPin, hwConfig.srLatchPin, hwConfig.srDataPin};
   prefs.putBytes("srPins", srPins, sizeof(srPins));
   prefs.putUChar("swap", swapAxes);
@@ -206,7 +210,6 @@ void BoardDriver::saveCalibration() {
       ledFlat[idx++] = ledIndexMap[row][col];
   prefs.putBytes("led", ledFlat, LED_COUNT);
   prefs.end();
-  calibrationLoaded = true;
   Serial.println("Board calibration saved to NVS");
 }
 
@@ -451,6 +454,7 @@ bool BoardDriver::calibrateAxis(Axis axis, uint8_t* axisPinsOrder, size_t NUM_PI
 }
 
 bool BoardDriver::runCalibration() {
+  calibrating.store(true);
   // Calibration animation - light up each pixel sequentially
   for (int i = 0; i < LED_COUNT; i++) {
     strip.setPixelColor(i, strip.Color(LedColors::White.r, LedColors::White.g, LedColors::White.b));
@@ -461,8 +465,9 @@ bool BoardDriver::runCalibration() {
   clearAllLEDs();
 
   Serial.println("========================== Board calibration required ==========================");
-  Serial.println("- Type 'skip' within 5 seconds to temporarily skip it (reboot to calibrate later)");
-  Serial.println("  This will start the AP and web server but LEDs and sensors won't have correct mapping");
+  Serial.println("- Connect to the AP and open the web interface to configure GPIO pins if needed");
+  Serial.println("- Type 'skip' within 5 seconds to temporarily skip calibration (reboot to calibrate later)");
+  Serial.println("  LEDs and sensors won't have correct mapping until calibration is completed");
   unsigned long startTime = millis();
   while (millis() - startTime < 5000) {
     if (Serial.available()) {
@@ -480,7 +485,7 @@ bool BoardDriver::runCalibration() {
         for (int row = 0; row < NUM_ROWS; row++)
           for (int col = 0; col < NUM_COLS; col++)
             ledIndexMap[row][col] = row * NUM_COLS + col;
-        calibrationLoaded = true;
+        calibrating.store(false);
         return true;
       } else {
         Serial.println("Unknown command \"" + input + "\" Type \"skip\" to skip calibration or wait 5 seconds for calibration to begin");
@@ -550,6 +555,7 @@ bool BoardDriver::runCalibration() {
 
   clearAllLEDs();
   Serial.println("Calibration complete");
+  calibrating.store(false);
   return false;
 }
 
@@ -982,17 +988,21 @@ void BoardDriver::doWaiting(std::atomic<bool>* stopFlag) {
 // LED settings methods
 void BoardDriver::setBrightness(uint8_t value) {
   brightness = value > 255 ? 255 : (value < 10 ? 10 : value);
-  strip.setBrightness(brightness);
-  showLEDs();
+  if (!calibrating.load()) {
+    strip.setBrightness(brightness);
+    showLEDs();
+  }
 }
 
 void BoardDriver::setDimMultiplier(uint8_t value) {
   dimMultiplier = value > 100 ? 100 : (value < 20 ? 20 : value);
-  // Re-apply all current colors with new dim multiplier
-  for (int row = 0; row < NUM_ROWS; row++)
-    for (int col = 0; col < NUM_COLS; col++)
-      setSquareLED(row, col, currentColors[row][col]);
-  showLEDs();
+  if (!calibrating.load()) {
+    // Re-apply all current colors with new dim multiplier
+    for (int row = 0; row < NUM_ROWS; row++)
+      for (int col = 0; col < NUM_COLS; col++)
+        setSquareLED(row, col, currentColors[row][col]);
+    showLEDs();
+  }
 }
 
 void BoardDriver::loadLedSettings() {
@@ -1051,13 +1061,9 @@ void BoardDriver::loadHardwareConfig() {
   hwConfig.srLatchPin = prefs.getUChar("srLatch", SR_LATCH_PIN);
   hwConfig.srDataPin = prefs.getUChar("srData", SR_SER_DATA_PIN);
   hwConfig.srInvertOutputs = prefs.getBool("srInvert", SR_INVERT_OUTPUTS != 0);
-  uint8_t savedRows[NUM_ROWS];
   size_t len = prefs.getBytesLength("rowPins");
-  if (len == NUM_ROWS) {
-    prefs.getBytes("rowPins", savedRows, NUM_ROWS);
-    for (int i = 0; i < NUM_ROWS; i++)
-      hwConfig.rowPins[i] = savedRows[i];
-  }
+  if (len == sizeof(hwConfig.rowPins))
+    prefs.getBytes("rowPins", hwConfig.rowPins, sizeof(hwConfig.rowPins));
   prefs.end();
   Serial.printf("Hardware config loaded: LED=%d, SR_CLK=%d, SR_LATCH=%d, SR_DATA=%d, SR_INVERT=%d\n", hwConfig.ledPin, hwConfig.srClkPin, hwConfig.srLatchPin, hwConfig.srDataPin, hwConfig.srInvertOutputs);
 }
@@ -1075,8 +1081,8 @@ void BoardDriver::saveHardwareConfig(const HardwareConfig& config) {
   prefs.putUChar("srLatch", config.srLatchPin);
   prefs.putUChar("srData", config.srDataPin);
   prefs.putBool("srInvert", config.srInvertOutputs);
-  prefs.putBytes("rowPins", config.rowPins, NUM_ROWS);
+  prefs.putBytes("rowPins", config.rowPins, sizeof(config.rowPins));
   prefs.end();
-  hwConfig = config;
-  Serial.println("Hardware config saved - reboot required to apply");
+  // Don't update hwConfig in memory, the new config takes effect after reboot. Modifying it here would race with calibration or gameplay reading the pins.
+  Serial.println("Hardware config saved to NVS");
 }

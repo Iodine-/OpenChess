@@ -157,12 +157,14 @@ class BoardDriver {
   // Runtime hardware pin configuration (persisted in NVS)
   HardwareConfig hwConfig;
 
+  // True while interactive calibration is running (guards concurrent web handler access)
+  std::atomic<bool> calibrating;
+
   // Calibration data
   uint8_t swapAxes;
   uint8_t toLogicalRow[NUM_ROWS];
   uint8_t toLogicalCol[NUM_COLS];
   uint8_t ledIndexMap[NUM_ROWS][NUM_COLS];
-  bool calibrationLoaded;
 
   bool loadCalibration();
   void saveCalibration();
@@ -183,7 +185,8 @@ class BoardDriver {
 
  public:
   BoardDriver();
-  void begin();
+  void beginHardware();
+  void beginCalibration();
   void readSensors();
   bool getSensorState(int row, int col);
   bool getSensorPrev(int row, int col);

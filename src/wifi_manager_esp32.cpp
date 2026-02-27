@@ -394,10 +394,16 @@ void WiFiManagerESP32::handleHardwareConfig(AsyncWebServerRequest* request) {
   if (changed) {
     boardDriver->saveHardwareConfig(config);
     request->send(200, "text/plain", "Hardware config saved. Rebooting...");
-    delay(500);
-    ESP.restart();
+    // Defer reboot to a separate task so the HTTP response is fully sent first
+    xTaskCreate(
+        [](void*) {
+          delay(500);
+          ESP.restart();
+          vTaskDelete(NULL);
+        },
+        "hw_reboot", 2048, NULL, 1, NULL);
   } else {
-    request->send(400, "text/plain", "No valid parameters provided");
+    request->send(200, "text/plain", "No changes detected");
   }
 }
 

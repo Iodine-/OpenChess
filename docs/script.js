@@ -197,6 +197,26 @@
     buildSoftware(data.software);
     buildFooter();
 
+    // ---------- Defer iframe loading to prevent focus-steal scroll ----------
+    (function () {
+        const iframes = document.querySelectorAll('iframe[src]');
+        iframes.forEach(iframe => {
+            iframe.setAttribute('data-src', iframe.src);
+            iframe.removeAttribute('src');
+        });
+        const io = new IntersectionObserver((entries, obs) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const frame = entry.target;
+                    frame.src = frame.getAttribute('data-src');
+                    frame.removeAttribute('data-src');
+                    obs.unobserve(frame);
+                }
+            });
+        }, { threshold: 0.5 });
+        iframes.forEach(iframe => io.observe(iframe));
+    })();
+
     // ====================================================
     //  Interactive features (init after DOM is built)
     // ====================================================

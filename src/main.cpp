@@ -62,8 +62,9 @@ void setup() {
   else
     Serial.println("LittleFS mounted successfully");
   moveHistory.begin();
-  boardDriver.begin();
+  boardDriver.beginHardware();
   wifiManager.begin();
+  boardDriver.beginCalibration();
   Serial.println();
   // Kick off NTP time sync (non-blocking, will resolve in background)
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");

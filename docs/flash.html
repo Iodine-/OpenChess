@@ -247,15 +247,24 @@
         <div class="card">
             <h2><span class="step-number">3</span> After Flashing</h2>
             <ul>
-                <li><strong>Calibration</strong>: Click "Logs & Console" and follow instructions to calibrate your board
+                <li>
+                    Connect to the <strong>OpenChess</strong> WiFi (password: <strong>chess123</strong>)
                 </li>
-                <li><strong>Skip</strong>: If using different GPIOs or transistor settings, type <strong>skip</strong>
-                    in the console and press Enter to configure them</li>
-                <li><strong>Config</strong>: Connect to the <strong>OpenChess</strong> WiFi
-                    (password: <strong>chess123</strong>) and open <strong>http://192.168.4.1</strong>
-                    to configure internet access and board settings (GPIOs, transistor kind, etc)
+                <li>
+                    Open a browser and navigate to <strong>http://192.168.4.1</strong> to access the web interface
                 </li>
-                <li><strong>Play</strong>: Start a game by selecting a mode from the webUI or the physical board</li>
+                <li>
+                    Click on <strong>Hardware Configuration</strong> and set the correct pins and transistor type
+                    (PNP/NPN) <strong>BEFORE</strong> connecting wires to GPIOs.
+                    Incorrect configuration with wires connected can cause short circuits
+                </li>
+                <li>
+                    Follow the Serial Monitor Console instructions (115200 baud) to calibrate sensors and LEDs.
+                    Calibration data is saved and only needs to be done once
+                </li>
+                <li>
+                    Start a game from the web interface or by placing a piece on the physical board
+                </li>
             </ul>
         </div>
     </div>
