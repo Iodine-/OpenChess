@@ -43,23 +43,19 @@ void WiFiManagerESP32::begin() {
     autoOtaEnabled = prefs.getBool("autoUpdate", false);
     prefs.end();
   }
-  if (!WiFi.softAP(AP_SSID, AP_PASSWORD)) {
-    Serial.println("ERROR: Failed to create Access Point!");
-    return;
-  }
   bool connected = connectToWiFi(wifiSSID, wifiPassword);
   Serial.println("==== WiFi Connection Information ====");
-  Serial.println("A WiFi Access Point was created:");
-  Serial.println("- SSID: " AP_SSID);
-  Serial.println("- Password: " AP_PASSWORD);
-  Serial.println("- Website: http://" + WiFi.softAPIP().toString());
-  Serial.println("- MAC Address: " + WiFi.softAPmacAddress());
   if (connected) {
     Serial.println("Connected to WiFi network: ");
     Serial.println("- SSID: " + wifiSSID);
     Serial.println("- Password: " + wifiPassword);
     Serial.println("- Website: http://" + WiFi.localIP().toString());
   } else {
+    Serial.println("A WiFi Access Point was created:");
+    Serial.println("- SSID: " AP_SSID);
+    Serial.println("- Password: " AP_PASSWORD);
+    Serial.println("- Website: http://" + WiFi.softAPIP().toString());
+    Serial.println("- MAC Address: " + WiFi.softAPmacAddress());
     Serial.println("Configure WiFi credentials from the web interface to join your WiFi network (Stockfish needs internet)");
   }
   Serial.println("=====================================\n");
@@ -128,13 +124,14 @@ String WiFiManagerESP32::getBoardUpdateJSON() {
 }
 
 String WiFiManagerESP32::getWiFiInfoJSON() {
+  bool connected = (WiFi.status() == WL_CONNECTED);
   JsonDocument doc;
   doc["ssid"] = wifiSSID;
   doc["password"] = wifiPassword;
-  doc["connected"] = (WiFi.status() == WL_CONNECTED) ? "true" : "false";
+  doc["connected"] = connected ? "true" : "false";
   doc["ap_ssid"] = AP_SSID;
-  doc["ap_ip"] = WiFi.softAPIP().toString();
-  doc["local_ip"] = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : "0.0.0.0";
+  doc["ap_ip"] = connected ? "" : WiFi.softAPIP().toString();
+  doc["local_ip"] = connected ? WiFi.localIP().toString() : "";
   doc["scanAllChannels"] = scanAllChannels;
   String output;
   serializeJson(doc, output);
@@ -524,7 +521,7 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
   WiFi.setHostname("OpenChess");
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA);
   if (scanAllChannels) {
     WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
     WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
@@ -545,6 +542,11 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
       break;
   }
   Serial.println("Failed to connect to WiFi");
+  // Start AP as fallback so the user can configure WiFi credentials via the web interface
+  WiFi.mode(WIFI_AP);
+  if (!WiFi.softAP(AP_SSID, AP_PASSWORD)) {
+    Serial.println("ERROR: Failed to create Access Point!");
+  }
   return false;
 }
 

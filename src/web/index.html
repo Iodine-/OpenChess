@@ -263,7 +263,7 @@
                     document.getElementById('password').value = data.password;
                     document.getElementById('scanAllChannels').checked = data.scanAllChannels;
                     const isConnected = (data.connected || '').toString() === 'true';
-                    const statusText = `SSID: ${data.ap_ssid} (${data.ap_ip})` + (isConnected ? ` | SSID: ${data.ssid} (${data.local_ip})` : ``);
+                    const statusText = isConnected ? `Connected to ${data.ssid} (${data.local_ip})` : `Access Point: ${data.ap_ssid} (${data.ap_ip})`;
                     document.getElementById('status').textContent = statusText;
                 })
                 .catch(() => {
