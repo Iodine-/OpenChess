@@ -56,6 +56,9 @@ def prepare():
             out.parent.mkdir(parents=True, exist_ok=True)
             raw = f.read_bytes()
             compressed = gzip.compress(raw, compresslevel=9, mtime=0)
+            # Force Unix OS byte (0x03) in gzip header for consistent
+            # output across platforms, avoids spurious git diffs.
+            compressed = compressed[:9] + b"\x03" + compressed[10:]
             out.write_bytes(compressed)
 
         count += 1
