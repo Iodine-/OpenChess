@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <ESPmDNS.h>
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -20,7 +21,6 @@ class MoveHistory;
 // ---------------------------
 #define AP_SSID "OpenChess"
 #define AP_PASSWORD "chess123"
-#define AP_PORT 80
 // Your WiFi Network Credentials for internet connection (can also be set via web interface)
 #define SECRET_SSID "YOUR_SSID"
 #define SECRET_PASS "YOUR_PASSWORD"
@@ -28,6 +28,9 @@ class MoveHistory;
 // Will take longer to connect but helps find the AP with best signal in a mesh network.
 // Don't enable unless you have multiple APs with the same SSID on different channels, otherwise it just adds unnecessary delay (around +10 seconds) to WiFi connection.
 #define WIFI_SCAN_ALL_CHANNELS 0
+
+#define HTTP_PORT 80
+#define MDNS_HOSTNAME "openchess"
 
 // ---------------------------
 // WiFi Manager Class for ESP32
@@ -109,6 +112,7 @@ class WiFiManagerESP32 {
   // (the TAR format requires sequential 512-byte header reads that can't be split across async chunks).
   void onFirmwareUploadBody(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total);
   void onWebAssetsUploadBody(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total);
+  void startMDNS();
 
   // OTA state
   OtaUpdater otaUpdater;

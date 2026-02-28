@@ -10,7 +10,7 @@
 
 static const char* INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(AP_PORT), wifiSSID(SECRET_SSID), wifiPassword(SECRET_PASS), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(WIFI_SCAN_ALL_CHANNELS), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), hasPendingWiFi(false), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false) {
+WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), wifiSSID(SECRET_SSID), wifiPassword(SECRET_PASS), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(WIFI_SCAN_ALL_CHANNELS), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), hasPendingWiFi(false), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false) {
   promotion.reset();
 }
 
@@ -49,12 +49,12 @@ void WiFiManagerESP32::begin() {
     Serial.println("Connected to WiFi network: ");
     Serial.println("- SSID: " + wifiSSID);
     Serial.println("- Password: " + wifiPassword);
-    Serial.println("- Website: http://" + WiFi.localIP().toString());
+    Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.localIP().toString() + ")");
   } else {
     Serial.println("A WiFi Access Point was created:");
     Serial.println("- SSID: " AP_SSID);
     Serial.println("- Password: " AP_PASSWORD);
-    Serial.println("- Website: http://" + WiFi.softAPIP().toString());
+    Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.softAPIP().toString() + ")");
     Serial.println("- MAC Address: " + WiFi.softAPmacAddress());
     Serial.println("Configure WiFi credentials from the web interface to join your WiFi network (Stockfish needs internet)");
   }
@@ -106,7 +106,7 @@ void WiFiManagerESP32::begin() {
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
   server.onNotFound([](AsyncWebServerRequest* request) { request->send(404, "text/plain", "Not Found"); });
   server.begin();
-  Serial.println("Web server started on port 80");
+  Serial.println("Web server started on port: " + String(HTTP_PORT));
 }
 
 String WiFiManagerESP32::getBoardUpdateJSON() {
@@ -535,6 +535,7 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
     Serial.printf("Connection attempt %d/%d - Status: %d\n", attempts + 1, maxAttempts, st);
     if (st == WL_CONNECTED) {
       Serial.println("Connected to WiFi!");
+      startMDNS();
       return true;
     }
     // Only trust failure statuses after a few attempts to avoid stale status from a previous connection attempt that hasn't fully cleared yet
@@ -547,7 +548,18 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
   if (!WiFi.softAP(AP_SSID, AP_PASSWORD)) {
     Serial.println("ERROR: Failed to create Access Point!");
   }
+  startMDNS();
   return false;
+}
+
+void WiFiManagerESP32::startMDNS() {
+  MDNS.end();
+  if (MDNS.begin(MDNS_HOSTNAME)) {
+    MDNS.addService("http", "tcp", HTTP_PORT);
+    Serial.println("mDNS started: http://" MDNS_HOSTNAME ".local");
+  } else {
+    Serial.println("mDNS failed to start");
+  }
 }
 
 void WiFiManagerESP32::handleGamesRequest(AsyncWebServerRequest* request) {
