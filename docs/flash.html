@@ -107,6 +107,16 @@
             color: var(--accent);
         }
 
+        .card a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .card a:hover {
+            color: var(--accent-hover);
+            text-decoration: underline;
+        }
+
         .install-section {
             text-align: center;
             padding: 30px 24px;
@@ -251,7 +261,9 @@
                     Connect to the <strong>OpenChess</strong> WiFi (password: <strong>chess123</strong>)
                 </li>
                 <li>
-                    Open a browser and navigate to <strong>http://192.168.4.1</strong> to access the web interface
+                    Go to
+                    <a href="http://openchess.local" target="_blank"><strong>http://openchess.local</strong></a>
+                    to configure your board
                 </li>
                 <li>
                     Click on <strong>Hardware Configuration</strong> and set the correct pins and transistor type

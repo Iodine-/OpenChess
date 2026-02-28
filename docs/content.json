@@ -761,7 +761,7 @@
                 "title": "4. Connect to Web UI",
                 "items": [
                     "Connect to the <strong>OpenChess</strong> WiFi (password: <strong>chess123</strong>)",
-                    "Open a browser and navigate to <strong>http://192.168.4.1</strong> to access the web interface",
+                    "Go to <a href='http://openchess.local' target='_blank'><strong>http://openchess.local</strong></a> to configure your board",
                     "Click on <strong>Hardware Configuration</strong> and set the correct pins and transistor type (PNP/NPN) <strong>BEFORE</strong> connecting wires to GPIOs. Incorrect configuration with wires connected can cause short circuits"
                 ]
             },

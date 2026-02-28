@@ -55,6 +55,7 @@ a {
 
 a:hover {
     color: var(--accent-hover);
+    text-decoration: underline;
 }
 
 img {
