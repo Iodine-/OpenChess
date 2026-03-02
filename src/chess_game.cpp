@@ -26,12 +26,24 @@ void ChessGame::initializeBoard() {
   wifiManager->updateBoardState(ChessUtils::boardToFEN(board, currentTurn, chessEngine), ChessUtils::evaluatePosition(board));
 }
 
-void ChessGame::waitForBoardSetup(const char targetBoard[8][8]) {
-  Serial.println("Set up the board in the required position...");
+void ChessGame::waitForBoardSetup(const char targetBoard[8][8], bool showFirework) {
+  // Quick check: if the board already matches, return immediately
+  boardDriver->readSensors();
+  bool allCorrect = true;
+  for (int row = 0; row < 8 && allCorrect; row++) {
+    for (int col = 0; col < 8; col++) {
+      if ((targetBoard[row][col] != ' ') != boardDriver->getSensorState(row, col)) {
+        allCorrect = false;
+        break;
+      }
+    }
+  }
+  if (allCorrect)
+    return;
 
+  Serial.println("Set up the board in the required position...");
   boardDriver->acquireLEDs();
   boardDriver->clearAllLEDs(false);
-  bool allCorrect = false;
   while (!allCorrect) {
     boardDriver->readSensors();
     allCorrect = true;
@@ -77,10 +89,9 @@ void ChessGame::waitForBoardSetup(const char targetBoard[8][8]) {
   }
   boardDriver->releaseLEDs();
 
-  Serial.println("Board setup complete! Game starting...");
-  boardDriver->fireworkAnimation();
-  boardDriver->readSensors();
-  boardDriver->updateSensorPrev();
+  Serial.println("Board setup complete!");
+  if (showFirework)
+    boardDriver->fireworkAnimation();
 }
 
 void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char promotion, bool isRemoteMove) {
@@ -387,6 +398,10 @@ void ChessGame::updateGameStatus() {
   }
 
   Serial.printf("It's %s's turn !\n", ChessUtils::colorName(currentTurn));
+
+  // Verify the physical board matches the expected state after each turn
+  if (!replaying)
+    waitForBoardSetup(board, false);
 }
 
 void ChessGame::setBoardStateFromFEN(const String& fen) {
@@ -397,6 +412,8 @@ void ChessGame::setBoardStateFromFEN(const String& fen) {
   wifiManager->updateBoardState(ChessUtils::boardToFEN(board, currentTurn, chessEngine), ChessUtils::evaluatePosition(board));
   Serial.println("Board state set from FEN: " + fen);
   ChessUtils::printBoard(board);
+  // Guide the user to set up the physical board to match the new position
+  waitForBoardSetup(board, false);
 }
 
 void ChessGame::resignGame(char resigningColor) {

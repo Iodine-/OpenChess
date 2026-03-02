@@ -33,7 +33,7 @@ class ChessGame {
 
   // Common initialization and game flow methods
   void initializeBoard();
-  void waitForBoardSetup(const char targetBoard[8][8]);
+  void waitForBoardSetup(const char targetBoard[8][8], bool showFirework = true);
   void applyMove(int fromRow, int fromCol, int toRow, int toCol, char promotion = ' ', bool isRemoteMove = false);
   bool tryPlayerMove(char playerColor, int& fromRow, int& fromCol, int& toRow, int& toCol);
   void updateGameStatus();
