@@ -60,8 +60,8 @@ void WiFiManagerESP32::begin() {
   }
   Serial.println("=====================================\n");
 
-  // Check for OTA updates, populates lastUpdateInfo for the web UI. If auto-update is enabled, also applies the update.
-  otaUpdater.autoUpdate(lastUpdateInfo, autoOtaEnabled);
+  if (autoOtaEnabled && lastUpdateInfo.available)
+    otaUpdater.applyUpdate(lastUpdateInfo);
 
   // Set up web server routes with async handlers
   server.on("/board-update", HTTP_GET, [this](AsyncWebServerRequest* request) { request->send(200, "application/json", this->getBoardUpdateJSON()); });
@@ -536,6 +536,7 @@ bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password,
     if (st == WL_CONNECTED) {
       Serial.println("Connected to WiFi!");
       startMDNS();
+      lastUpdateInfo = otaUpdater.checkForUpdate();
       return true;
     }
     // Only trust failure statuses after a few attempts to avoid stale status from a previous connection attempt that hasn't fully cleared yet
@@ -630,9 +631,10 @@ void WiFiManagerESP32::handleDeleteGame(AsyncWebServerRequest* request) {
 // ========== OTA Update Handlers ==========
 
 void WiFiManagerESP32::handleOtaStatus(AsyncWebServerRequest* request) {
-  // If we never got update info (e.g. no internet at boot), retry now
-  if (lastUpdateInfo.version.isEmpty() && WiFi.status() == WL_CONNECTED)
-    lastUpdateInfo = otaUpdater.checkForUpdate();
+  if (lastUpdateInfo.version.isEmpty()) {
+    request->send(400, "text/plain", "No update info available.");
+    return;
+  }
 
   JsonDocument doc;
   doc["version"] = FIRMWARE_VERSION;

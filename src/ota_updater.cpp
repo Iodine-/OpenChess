@@ -365,10 +365,3 @@ void OtaUpdater::applyUpdate(const OtaUpdateInfo& info) {
       Serial.println("OTA: Firmware update failed");
   }
 }
-
-void OtaUpdater::autoUpdate(OtaUpdateInfo& info, bool apply) {
-  info = checkForUpdate();
-  if (apply && info.available) {
-    applyUpdate(info);
-  }
-}
