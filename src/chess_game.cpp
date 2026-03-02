@@ -38,8 +38,11 @@ void ChessGame::waitForBoardSetup(const char targetBoard[8][8], bool showFirewor
       }
     }
   }
-  if (allCorrect)
+  if (allCorrect) {
+    if (showFirework)
+      boardDriver->fireworkAnimation();
     return;
+  }
 
   Serial.println("Set up the board in the required position...");
   boardDriver->acquireLEDs();
