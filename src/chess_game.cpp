@@ -234,6 +234,12 @@ bool ChessGame::tryPlayerMove(char playerColor, int& fromRow, int& fromCol, int&
       while (!piecePlaced) {
         boardDriver->readSensors();
 
+        // Draw gesture can be initiated while waiting for this move to complete
+        if (toupper(piece) == 'K' && checkPhysicalResignOrDraw()) {
+          boardDriver->clearAllLEDs();
+          return false;
+        }
+
         // First check if the original piece was placed back
         if (boardDriver->getSensorState(row, col)) {
           targetRow = row;
@@ -439,30 +445,55 @@ void ChessGame::drawGame() {
 bool ChessGame::checkPhysicalResignOrDraw() {
   if (gameOver) return false;
 
-  // Find both kings on the internal board
   int wKingRow = -1, wKingCol = -1, bKingRow = -1, bKingCol = -1;
   chessEngine->findKingPosition(board, 'w', wKingRow, wKingCol);
   chessEngine->findKingPosition(board, 'b', bKingRow, bKingCol);
-  if (wKingRow < 0 || bKingRow < 0) return false; // Safety: can't find kings
+  if (wKingRow < 0 || bKingRow < 0) return false;
+  if (boardDriver->getSensorState(wKingRow, wKingCol) || boardDriver->getSensorState(bKingRow, bKingCol))
+    return false;
 
-  bool whiteKingLifted = !boardDriver->getSensorState(wKingRow, wKingCol);
-  bool blackKingLifted = !boardDriver->getSensorState(bKingRow, bKingCol);
+  Serial.println("Both kings lifted! Confirming draw gesture...");
 
-  if (whiteKingLifted && blackKingLifted) {
-    // Both kings lifted off the board — wait for debounce confirmation
-    Serial.println("Both kings lifted! Confirming draw gesture...");
-    unsigned long start = millis();
-    while (millis() - start < 2000) {
-      boardDriver->readSensors();
-      // If either king is placed back, abort
-      if (boardDriver->getSensorState(wKingRow, wKingCol) || boardDriver->getSensorState(bKingRow, bKingCol))
-        return false;
-      delay(SENSOR_READ_DELAY_MS);
+  constexpr unsigned long DRAW_HOLD_MS = 2000;
+  constexpr int PROGRESS_STEPS = 8;
+
+  boardDriver->acquireLEDs();
+  boardDriver->clearAllLEDs(false);
+
+  unsigned long start = millis();
+  int shownProgress = -1;
+  while (millis() - start < DRAW_HOLD_MS) {
+    boardDriver->readSensors();
+
+    if (boardDriver->getSensorState(wKingRow, wKingCol) || boardDriver->getSensorState(bKingRow, bKingCol)) {
+      boardDriver->clearAllLEDs();
+      boardDriver->releaseLEDs();
+      Serial.println("Draw gesture aborted (a king was placed back)");
+      return false;
     }
-    drawGame();
-    return true;
+
+    unsigned long elapsed = millis() - start;
+    int progress = ((elapsed + 1) * PROGRESS_STEPS) / DRAW_HOLD_MS;
+    if (progress > PROGRESS_STEPS)
+      progress = PROGRESS_STEPS;
+
+    if (progress != shownProgress) {
+      boardDriver->clearAllLEDs(false);
+      for (int i = 0; i < progress; i++) {
+        boardDriver->setSquareLED(7 - i, 3, LedColors::Cyan);
+        boardDriver->setSquareLED(i, 4, LedColors::Cyan);
+      }
+      boardDriver->showLEDs();
+      shownProgress = progress;
+    }
+
+    delay(SENSOR_READ_DELAY_MS);
   }
-  return false;
+
+  boardDriver->clearAllLEDs();
+  boardDriver->releaseLEDs();
+  drawGame();
+  return true;
 }
 
 void ChessGame::updateCastlingRightsAfterMove(int fromRow, int fromCol, int toRow, int toCol, char movedPiece, char capturedPiece) {

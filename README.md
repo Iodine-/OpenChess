@@ -20,7 +20,7 @@ Features that differentiate this fork from the original Concept-Bytes project:
 - **Lichess**: Play online Lichess games on your physical board!
 - **Check**: Detects checks, doesn't display or allow illegal moves that would put or leave your king in check
 - **Checkmate/Stalemate**: Detects when the game is over and shows an animation with the winner color (Blue for black, Cyan for draws). Enforces 50-move, 3-fold repetition and insufficient material rules
-- **Draw/Resign**: Lift both kings (non playing color first) off the board and hold them lifted for 2 seconds to end the game.
+- **Draw/Resign**: Buttons in the WebUI can be used to Draw or Resign or Lift both kings off the board and hold them lifted for 2 seconds to end the game in a Draw.
 - **Castling**: Castling is now possible, just move the king 2 squares towards the side you want to castle and it will show you where to move the rook.
 - **En passant**: En passant captures are now possible. Also correctly sets en passant square in the FEN (so Stockfish can take en passant too)
 - **Promotion**: The promoted piece can now be picked from the WebUI. If the WebUI is not open, Queen is automatically picked.
