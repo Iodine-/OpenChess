@@ -45,8 +45,11 @@ class ChessGame {
   void applyCastling(int kingFromRow, int kingFromCol, int kingToRow, int kingToCol, char kingPiece, bool waitForKingCompletion = false);
   void confirmSquareCompletion(int row, int col);
 
-  // Virtual hooks for remote move handling (overridden in subclasses)
+  static constexpr unsigned long PROMOTION_TIMEOUT_MS = 120000; // 2 minutes to choose a promotion, after which it defaults to queen
+
+  // Virtual hooks (overridden in subclasses)
   virtual void waitForRemoteMoveCompletion(int fromRow, int fromCol, int toRow, int toCol, bool isCapture, bool isEnPassant = false, int enPassantCapturedPawnRow = -1) {}
+  virtual char waitForPromotionChoice(char piece);
 
  public:
   virtual ~ChessGame() {}

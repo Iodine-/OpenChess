@@ -141,36 +141,10 @@ void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char p
     // If promotion piece is already specified (from bot, lichess, replay), use it
     if (promotion != ' ' && promotion != '\0') {
       promotion = ChessUtils::isWhitePiece(piece) ? toupper(promotion) : tolower(promotion);
-    } else if (!replaying && !isRemoteMove && wifiManager->isWebClientConnected()) {
-      // Acquire LED mutex so any queued animation (blink/capture) finishes first, then show Yellow LED on the promotion square while waiting
-      boardDriver->acquireLEDs();
-      boardDriver->clearAllLEDs(false);
-      boardDriver->setSquareLED(toRow, toCol, LedColors::Yellow);
-      boardDriver->showLEDs();
-      boardDriver->releaseLEDs();
-      // Wait for user to choose promotion piece
-      wifiManager->startPromotionWait(ChessUtils::getPieceColor(piece));
-      unsigned long promotionStart = millis();
-      const unsigned long PROMOTION_TIMEOUT_MS = 60000; // 60 second timeout
-      while (wifiManager->isPromotionPending() && wifiManager->getPromotionChoice() == ' ') {
-        if (millis() - promotionStart >= PROMOTION_TIMEOUT_MS) {
-          Serial.println("Promotion timeout - defaulting to queen");
-          break;
-        }
-        delay(100);
-      }
-
-      promotion = wifiManager->getPromotionChoice();
-      wifiManager->clearPromotion();
-      boardDriver->clearAllLEDs();
-
-      // If timed out (no choice received), default to queen
-      if (promotion == ' ')
-        promotion = ChessUtils::isWhitePiece(piece) ? 'Q' : 'q';
-      else
-        promotion = ChessUtils::isWhitePiece(piece) ? toupper(promotion) : tolower(promotion);
+    } else if (!replaying && !isRemoteMove) {
+      promotion = waitForPromotionChoice(piece);
     } else {
-      // No web client, default to queen
+      // Remote move without specified promotion, default to queen
       promotion = ChessUtils::isWhitePiece(piece) ? 'Q' : 'q';
     }
     board[toRow][toCol] = promotion;
@@ -423,6 +397,29 @@ void ChessGame::setBoardStateFromFEN(const String& fen) {
   ChessUtils::printBoard(board);
   // Guide the user to set up the physical board to match the new position
   waitForBoardSetup(board, false);
+}
+
+char ChessGame::waitForPromotionChoice(char piece) {
+  if (!wifiManager->isWebClientConnected())
+    return ChessUtils::isWhitePiece(piece) ? 'Q' : 'q';
+
+  wifiManager->startPromotionWait(ChessUtils::getPieceColor(piece));
+  unsigned long promotionStart = millis();
+  while (wifiManager->isPromotionPending() && wifiManager->getPromotionChoice() == ' ') {
+    if (millis() - promotionStart >= PROMOTION_TIMEOUT_MS) {
+      Serial.println("Promotion timeout - defaulting to queen");
+      break;
+    }
+    delay(25);
+  }
+
+  char promotion = wifiManager->getPromotionChoice();
+  wifiManager->clearPromotion();
+  boardDriver->clearAllLEDs();
+
+  if (promotion != ' ')
+    return ChessUtils::isWhitePiece(piece) ? toupper(promotion) : tolower(promotion);
+  return ChessUtils::isWhitePiece(piece) ? 'Q' : 'q';
 }
 
 void ChessGame::resignGame(char resigningColor) {
