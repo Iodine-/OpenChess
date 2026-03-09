@@ -25,9 +25,6 @@ class ChessLichess : public ChessBot {
   unsigned long lastPollTime;
   static const unsigned long POLL_INTERVAL_MS = 500;
 
-  // Animation stop flag for remote turn thinking animation
-  std::atomic<bool>* stopAnimation;
-
   // Game flow
   void waitForLichessGame();
   void syncBoardWithLichess(const LichessGameState& state);

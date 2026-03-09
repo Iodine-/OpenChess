@@ -6,6 +6,7 @@
 #include "chess_utils.h"
 #include "led_colors.h"
 #include <Arduino.h>
+#include <atomic>
 
 // Forward declarations to avoid circular dependencies
 class WiFiManagerESP32;
@@ -23,7 +24,8 @@ class ChessGame {
   char board[8][8];
   char currentTurn; // 'w' or 'b'
   bool gameOver;
-  bool replaying; // True while replaying moves during resume (suppresses LEDs and physical move waits)
+  bool replaying;                   // True while replaying moves during resume (suppresses LEDs and physical move waits)
+  std::atomic<bool>* stopAnimation; // Stop flag for cancellable animations (thinking/waiting), managed by subclasses
 
   // Standard initial chess board setup
   static const char INITIAL_BOARD[8][8];

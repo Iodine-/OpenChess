@@ -14,8 +14,7 @@ ChessLichess::ChessLichess(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* w
       myColor('w'),
       lastKnownMoves(""),
       lastSentMove(""),
-      lastPollTime(0),
-      stopAnimation(nullptr) {}
+      lastPollTime(0) {}
 
 void ChessLichess::begin() {
   Serial.println("=== Starting Lichess Mode ===");

@@ -15,7 +15,7 @@ const char ChessGame::INITIAL_BOARD[8][8] = {
     {'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'}  // row 7 = rank 1 (White pieces, bottom row)
 };
 
-ChessGame::ChessGame(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh) : boardDriver(bd), chessEngine(ce), wifiManager(wm), moveHistory(mh), currentTurn('w'), gameOver(false), replaying(false) {}
+ChessGame::ChessGame(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh) : boardDriver(bd), chessEngine(ce), wifiManager(wm), moveHistory(mh), currentTurn('w'), gameOver(false), replaying(false), stopAnimation(nullptr) {}
 
 void ChessGame::initializeBoard() {
   currentTurn = 'w';
@@ -454,6 +454,13 @@ bool ChessGame::checkPhysicalResignOrDraw() {
 
   Serial.println("Both kings lifted! Confirming draw gesture...");
 
+  // Temporarily stop any running animation to free the LED mutex
+  bool hadAnimation = (stopAnimation != nullptr);
+  if (hadAnimation) {
+    stopAnimation->store(true);
+    stopAnimation = nullptr;
+  }
+
   constexpr unsigned long DRAW_HOLD_MS = 2000;
   constexpr int PROGRESS_STEPS = 8;
 
@@ -468,6 +475,8 @@ bool ChessGame::checkPhysicalResignOrDraw() {
     if (boardDriver->getSensorState(wKingRow, wKingCol) || boardDriver->getSensorState(bKingRow, bKingCol)) {
       boardDriver->clearAllLEDs();
       boardDriver->releaseLEDs();
+      if (hadAnimation)
+        stopAnimation = boardDriver->startThinkingAnimation();
       Serial.println("Draw gesture aborted (a king was placed back)");
       return false;
     }
