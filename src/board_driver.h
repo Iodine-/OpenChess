@@ -98,7 +98,7 @@ struct AnimationJob {
       int row, col;
     } capture;
     struct {
-      int col;
+      int row, col;
     } promotion;
     struct {
       int row, col;
@@ -132,7 +132,7 @@ class BoardDriver {
   static void animationWorkerTask(void* param);
   void executeAnimation(const AnimationJob& job);
   void doCapture(int row, int col);
-  void doPromotion(int col);
+  void doPromotion(int row, int col);
   void doBlink(int row, int col, LedRGB color, int times, bool clearAfter);
   void doWaiting(std::atomic<bool>* stopFlag);
   void doThinking(std::atomic<bool>* stopFlag);
@@ -203,7 +203,7 @@ class BoardDriver {
   // Animation Functions (queued for async execution)
   void fireworkAnimation(LedRGB color = LedColors::White);
   void captureAnimation(int row, int col);
-  void promotionAnimation(int col);
+  void promotionAnimation(int row, int col);
   void blinkSquare(int row, int col, LedRGB color, int times = 3, bool clearAfter = true);
   void showConnectingAnimation();
   void flashBoardAnimation(LedRGB color, int times = 3);

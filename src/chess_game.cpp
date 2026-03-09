@@ -137,7 +137,7 @@ void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char p
   }
 
   if (chessEngine->isPawnPromotion(piece, toRow)) {
-    if (!replaying) boardDriver->promotionAnimation(toCol);
+    if (!replaying) boardDriver->promotionAnimation(toRow, toCol);
     // If promotion piece is already specified (from bot, lichess, replay), use it
     if (promotion != ' ' && promotion != '\0') {
       promotion = ChessUtils::isWhitePiece(piece) ? toupper(promotion) : tolower(promotion);
@@ -551,6 +551,8 @@ void ChessGame::applyCastling(int kingFromRow, int kingFromCol, int kingToRow, i
   // Skip all LED prompts and physical waits during replay
   if (replaying) return;
 
+  boardDriver->acquireLEDs();
+
   if (waitForKingCompletion) {
     // Handle LED prompts and wait for king move
     Serial.printf("Castling: please move king from %c%d to %c%d\n", (char)('a' + kingFromCol), 8 - kingFromRow, (char)('a' + kingToCol), 8 - kingToRow);
@@ -604,6 +606,7 @@ void ChessGame::applyCastling(int kingFromRow, int kingFromCol, int kingToRow, i
   }
 
   boardDriver->clearAllLEDs();
+  boardDriver->releaseLEDs();
 }
 
 void ChessGame::confirmSquareCompletion(int row, int col) {

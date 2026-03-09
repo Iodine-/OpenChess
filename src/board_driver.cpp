@@ -116,7 +116,7 @@ void BoardDriver::executeAnimation(const AnimationJob& job) {
       doCapture(job.params.capture.row, job.params.capture.col);
       break;
     case AnimationType::PROMOTION:
-      doPromotion(job.params.promotion.col);
+      doPromotion(job.params.promotion.row, job.params.promotion.col);
       break;
     case AnimationType::BLINK:
       doBlink(job.params.blink.row, job.params.blink.col, job.params.blink.color, job.params.blink.times, job.params.blink.clearAfter);
@@ -827,27 +827,31 @@ void BoardDriver::doCapture(int centerRow, int centerCol) {
   clearAllLEDs();
 }
 
-void BoardDriver::promotionAnimation(int col) {
+void BoardDriver::promotionAnimation(int row, int col) {
   AnimationJob job = {AnimationType::PROMOTION, nullptr, {}};
+  job.params.promotion.row = row;
   job.params.promotion.col = col;
   xQueueSend(animationQueue, &job, portMAX_DELAY);
 }
 
-void BoardDriver::doPromotion(int col) {
+void BoardDriver::doPromotion(int row, int col) {
   clearAllLEDs(false);
   // Column-based waterfall animation
   for (int step = 0; step < 16; step++) {
-    for (int row = 0; row < 8; row++) {
+    for (int r = 0; r < 8; r++) {
       // Create a golden wave moving up and down the column
-      if ((step + row) % 8 < 4)
-        setSquareLED(row, col, LedColors::Yellow);
+      if ((step + r) % 8 < 4)
+        setSquareLED(r, col, LedColors::Yellow);
       else
-        setSquareLED(row, col, LedColors::Off);
+        setSquareLED(r, col, LedColors::Off);
     }
     showLEDs();
     vTaskDelay(pdMS_TO_TICKS(100));
   }
-  clearAllLEDs();
+  // Leave yellow LED on the promotion square to indicate a promotion piece needs to be chosen (LED will be cleared by replacing the pawn for the new piece or by any other move)
+  clearAllLEDs(false);
+  setSquareLED(row, col, LedColors::Yellow);
+  showLEDs();
 }
 
 void BoardDriver::flashBoardAnimation(LedRGB color, int times) {
