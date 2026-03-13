@@ -726,7 +726,7 @@
         "title": "Software Setup",
         "intro": "With the hardware built, flash the firmware to bring your chess board to life.",
         "webInstaller": {
-            "text": "Don't want to install any tools? Use the <a href=\"flash.html\">Web Installer</a> to flash your ESP32 directly from the browser (Chrome/Edge only).</br>",
+            "text": "<h3><strong>⚡ Quick Flash</strong></h3>Don't want to install any tools? Use the <a href=\"flash.html\">Web Installer</a> to flash your ESP32 directly from the browser (Chrome/Edge only)</br>",
             "buttonText": "Open Web Installer",
             "buttonUrl": "flash.html"
         },

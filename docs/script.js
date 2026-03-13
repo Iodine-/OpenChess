@@ -154,7 +154,7 @@
         // Web Installer callout
         if (sw.webInstaller) {
             const installerBox = el('div', { className: 'info-box', style: { marginBottom: '1.5rem' } });
-            installerBox.innerHTML = '<strong>⚡ Quick Flash</strong> ' + sw.webInstaller.text;
+            installerBox.innerHTML = sw.webInstaller.text;
             const btn = el('a', {
                 href: sw.webInstaller.buttonUrl,
                 className: 'btn-primary',
@@ -267,6 +267,29 @@
                 new Promise(r => img.addEventListener('load', r, { once: true }))
         )).then(() => { clearTimeout(timeout); stop(); });
     }
+
+    // Ensure deep links (e.g. #software) work on first load/reload
+    // after sections are created from JSON.
+    function scrollToHash({ smooth = true } = {}) {
+        const rawHash = window.location.hash;
+        if (!rawHash || rawHash.length <= 1) return;
+
+        const id = decodeURIComponent(rawHash.slice(1));
+        const target = document.getElementById(id);
+        if (!target) return;
+
+        if (smooth) {
+            scrollToSection(target);
+            return;
+        }
+
+        target.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+
+    // Native hash scrolling can happen before async content exists.
+    // Re-apply once content is built.
+    scrollToHash({ smooth: false });
+    window.addEventListener('hashchange', () => scrollToHash({ smooth: true }));
 
     // --- Mobile sidebar toggle + nav click handler ---
     (function () {

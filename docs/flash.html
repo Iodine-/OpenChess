@@ -234,18 +234,19 @@
 
         <div class="card install-section">
             <h2 style="justify-content: center;"><span class="step-number">2</span> Flash OpenChess</h2>
-            <p>Connect your ESP32 via USB and click the button below</p>
-            <p style="margin-bottom: 20px;">This will erase any existing data on the ESP32</p>
+            <p style="margin-bottom: 20px;">Connect your ESP32 via USB and click the button below</p>
 
             <esp-web-install-button id="installButton" manifest="manifest.json">
                 <button slot="activate">Install OpenChess</button>
                 <span slot="unsupported">
-                    <p style="color: var(--red);">Your browser does not support Web Serial.<br>Please use Chrome, Edge,
-                        or Opera.</p>
+                    <p style="color: var(--red);">Your browser does not support Web Serial.<br>
+                        Please use Chrome, Edge or Opera
+                    </p>
                 </span>
                 <span slot="not-allowed">
-                    <p style="color: var(--yellow);">Web Serial access was denied.<br>Please grant permission and try
-                        again.</p>
+                    <p style="color: var(--yellow);">Web Serial access was denied.<br>
+                        Please grant permission and try again.
+                    </p>
                 </span>
             </esp-web-install-button>
 
