@@ -2,7 +2,7 @@
 #define BOARD_DRIVER_H
 
 #include "led_colors.h"
-#include <Adafruit_NeoPixel.h>
+#include <NeoPixelBusLg.h>
 #include <atomic>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -122,7 +122,7 @@ struct AnimationJob {
 // ---------------------------
 class BoardDriver {
  private:
-  Adafruit_NeoPixel strip;
+  NeoPixelBusLg<NeoGrbFeature, NeoEsp32I2s1Ws2812xMethod, NeoGammaNullMethod>* strip;
 
   // Animation queue system
   static QueueHandle_t animationQueue;

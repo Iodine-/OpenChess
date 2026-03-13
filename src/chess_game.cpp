@@ -17,6 +17,13 @@ const char ChessGame::INITIAL_BOARD[8][8] = {
 
 ChessGame::ChessGame(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh) : boardDriver(bd), chessEngine(ce), wifiManager(wm), moveHistory(mh), currentTurn('w'), gameOver(false), replaying(false), stopAnimation(nullptr) {}
 
+ChessGame::~ChessGame() {
+  if (stopAnimation) {
+    stopAnimation->store(true);
+    stopAnimation = nullptr;
+  }
+}
+
 void ChessGame::initializeBoard() {
   currentTurn = 'w';
   gameOver = false;

@@ -35,7 +35,7 @@ static constexpr int DefaultRowColToLEDindexMap[NUM_ROWS][NUM_COLS] = {
     {63, 62, 61, 60, 59, 58, 57, 56},
 };
 
-BoardDriver::BoardDriver() : strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800), lastEnabledCol(-2), brightness(BRIGHTNESS), dimMultiplier(70), swapAxes(0), hwConfig(HardwareConfig::defaults()), calibrating(false), calibrated(false) {
+BoardDriver::BoardDriver() : strip(nullptr), lastEnabledCol(-2), brightness(BRIGHTNESS), dimMultiplier(70), swapAxes(0), hwConfig(HardwareConfig::defaults()), calibrating(false), calibrated(false) {
   for (int i = 0; i < NUM_ROWS; i++)
     toLogicalRow[i] = i;
   for (int i = 0; i < NUM_COLS; i++)
@@ -50,13 +50,12 @@ BoardDriver::BoardDriver() : strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800), la
 void BoardDriver::beginHardware() {
   // Load hardware pin configuration from NVS (must happen before any GPIO or strip init)
   loadHardwareConfig();
-  // Re-initialize strip with the (possibly NVS-overridden) LED pin
-  strip.setPin(hwConfig.ledPin);
-  // Initialize NeoPixel strip
-  strip.begin();
+  // https://github.com/Makuna/NeoPixelBus/wiki/ESP32-NeoMethods
+  strip = new NeoPixelBusLg<NeoGrbFeature, NeoEsp32I2s1Ws2812xMethod, NeoGammaNullMethod>(LED_COUNT, hwConfig.ledPin);
+  strip->Begin();
   showLEDs();        // turn off all LEDs
   loadLedSettings(); // Load LED settings from NVS (brightness, dim multiplier)
-  strip.setBrightness(brightness);
+  strip->SetLuminance(brightness);
   // Shift register pins as outputs
   pinMode(hwConfig.srDataPin, OUTPUT);
   pinMode(hwConfig.srClkPin, OUTPUT);
@@ -324,7 +323,7 @@ bool BoardDriver::waitForSingleRawPress(int& rawRow, int& rawCol, unsigned long 
 
 void BoardDriver::showCalibrationError() {
   for (int i = 0; i < LED_COUNT; i++)
-    strip.setPixelColor(i, strip.Color(LedColors::Red.r, LedColors::Red.g, LedColors::Red.b));
+    strip->SetPixelColor(i, RgbColor(LedColors::Red.r, LedColors::Red.g, LedColors::Red.b));
   showLEDs();
   delay(500);
   waitForBoardEmpty();
@@ -458,7 +457,7 @@ bool BoardDriver::runCalibration() {
   calibrating.store(true);
   // Calibration animation - light up each pixel sequentially
   for (int i = 0; i < LED_COUNT; i++) {
-    strip.setPixelColor(i, strip.Color(LedColors::White.r, LedColors::White.g, LedColors::White.b));
+    strip->SetPixelColor(i, RgbColor(LedColors::White.r, LedColors::White.g, LedColors::White.b));
     showLEDs();
     delay(50);
   }
@@ -519,13 +518,13 @@ bool BoardDriver::runCalibration() {
 
   auto displayCalibrationLEDs = [&](int currentPixel) {
     for (int i = 0; i < LED_COUNT; i++)
-      strip.setPixelColor(i, 0);
+      strip->SetPixelColor(i, RgbColor(0));
     for (int r = 0; r < NUM_ROWS; r++)
       for (int c = 0; c < NUM_COLS; c++)
         if (logicalUsed[r][c])
-          strip.setPixelColor(ledIndexMap[r][c], strip.Color(LedColors::Green.r, LedColors::Green.g, LedColors::Green.b));
+          strip->SetPixelColor(ledIndexMap[r][c], RgbColor(LedColors::Green.r, LedColors::Green.g, LedColors::Green.b));
     if (currentPixel < LED_COUNT)
-      strip.setPixelColor(currentPixel, strip.Color(LedColors::White.r, LedColors::White.g, LedColors::White.b));
+      strip->SetPixelColor(currentPixel, RgbColor(LedColors::White.r, LedColors::White.g, LedColors::White.b));
     showLEDs();
   };
 
@@ -662,7 +661,7 @@ void BoardDriver::clearAllLEDs(bool show) {
     for (int col = 0; col < NUM_COLS; col++)
       currentColors[row][col] = LedColors::Off;
   for (int i = 0; i < LED_COUNT; i++)
-    strip.setPixelColor(i, 0);
+    strip->SetPixelColor(i, RgbColor(0));
   if (show)
     showLEDs();
 }
@@ -672,11 +671,11 @@ void BoardDriver::setSquareLED(int row, int col, LedRGB color) {
   float multiplier = 1.0f;
   if ((row + col) % 2 == 1)
     multiplier = dimMultiplier / 100.0f; // Dim dark squares based on user setting
-  strip.setPixelColor(getPixelIndex(row, col), strip.Color(color.r * multiplier, color.g * multiplier, color.b * multiplier));
+  strip->SetPixelColor(getPixelIndex(row, col), RgbColor(color.r * multiplier, color.g * multiplier, color.b * multiplier));
 }
 
 void BoardDriver::showLEDs() {
-  strip.show();
+  strip->Show();
 }
 
 void BoardDriver::showConnectingAnimation() {
@@ -994,7 +993,7 @@ void BoardDriver::doWaiting(std::atomic<bool>* stopFlag) {
 void BoardDriver::setBrightness(uint8_t value) {
   brightness = value > 255 ? 255 : (value < 10 ? 10 : value);
   if (!calibrating.load()) {
-    strip.setBrightness(brightness);
+    strip->SetLuminance(brightness);
     showLEDs();
   }
 }

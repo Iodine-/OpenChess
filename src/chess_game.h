@@ -52,7 +52,7 @@ class ChessGame {
   virtual char waitForPromotionChoice(char piece);
 
  public:
-  virtual ~ChessGame() {}
+  virtual ~ChessGame();
 
   virtual void begin() = 0;
   virtual void update() = 0;
