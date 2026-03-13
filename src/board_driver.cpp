@@ -80,6 +80,23 @@ void BoardDriver::beginHardware() {
   xTaskCreatePinnedToCore(animationWorkerTask, "AnimWorker", 4096, nullptr, 1, &animationTaskHandle, 1);
 
   calibrated = loadCalibration();
+
+  if (calibrated) {
+    // Initialize sensors state without debouncing to prevent brief LED flashes at boot (live game recover board setup)
+    bool initialRawState[NUM_ROWS][NUM_COLS];
+    readRawSensors(initialRawState);
+    unsigned long now = millis();
+    for (int col = 0; col < NUM_COLS; col++) {
+      for (int row = 0; row < NUM_ROWS; row++) {
+        uint8_t logicalRow = toLogicalRow[swapAxes ? col : row];
+        uint8_t logicalCol = toLogicalCol[swapAxes ? row : col];
+        sensorState[logicalRow][logicalCol] = initialRawState[row][col];
+        sensorPrev[logicalRow][logicalCol] = initialRawState[row][col];
+        sensorRaw[logicalRow][logicalCol] = initialRawState[row][col];
+        sensorDebounceTime[logicalRow][logicalCol] = now;
+      }
+    }
+  }
 }
 
 void BoardDriver::checkCalibration() {

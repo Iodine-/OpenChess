@@ -403,7 +403,8 @@ void ChessGame::setBoardStateFromFEN(const String& fen) {
   Serial.println("Board state set from FEN: " + fen);
   ChessUtils::printBoard(board);
   // Guide the user to set up the physical board to match the new position
-  waitForBoardSetup(board, false);
+  if (!replaying)
+    waitForBoardSetup(board, false);
 }
 
 char ChessGame::waitForPromotionChoice(char piece) {
