@@ -48,6 +48,11 @@ BoardDriver::BoardDriver() : strip(nullptr), lastEnabledCol(-2), brightness(BRIG
 }
 
 void BoardDriver::beginHardware() {
+  // Initialize animation queue system
+  instance = this;
+  ledMutex = xSemaphoreCreateMutex();
+  animationQueue = xQueueCreate(8, sizeof(AnimationJob));
+  xTaskCreatePinnedToCore(animationWorkerTask, "AnimWorker", 4096, nullptr, 1, &animationTaskHandle, 1);
   // Load hardware pin configuration from NVS (must happen before any GPIO or strip init)
   loadHardwareConfig();
   // https://github.com/Makuna/NeoPixelBus/wiki/ESP32-NeoMethods
@@ -64,23 +69,7 @@ void BoardDriver::beginHardware() {
   // Row pins as inputs
   for (int c = 0; c < NUM_ROWS; c++)
     pinMode(hwConfig.rowPins[c], INPUT);
-  // Initialize sensor arrays
-  for (int row = 0; row < NUM_ROWS; row++)
-    for (int col = 0; col < NUM_COLS; col++) {
-      sensorState[row][col] = false;
-      sensorPrev[row][col] = false;
-      sensorRaw[row][col] = false;
-      sensorDebounceTime[row][col] = 0;
-    }
-
-  // Initialize animation queue system
-  instance = this;
-  ledMutex = xSemaphoreCreateMutex();
-  animationQueue = xQueueCreate(8, sizeof(AnimationJob));
-  xTaskCreatePinnedToCore(animationWorkerTask, "AnimWorker", 4096, nullptr, 1, &animationTaskHandle, 1);
-
   calibrated = loadCalibration();
-
   if (calibrated) {
     // Initialize sensors state without debouncing to prevent brief LED flashes at boot (live game recover board setup)
     bool initialRawState[NUM_ROWS][NUM_COLS];
@@ -96,15 +85,23 @@ void BoardDriver::beginHardware() {
         sensorDebounceTime[logicalRow][logicalCol] = now;
       }
     }
+  } else {
+    for (int row = 0; row < NUM_ROWS; row++) {
+      for (int col = 0; col < NUM_COLS; col++) {
+        sensorState[row][col] = false;
+        sensorPrev[row][col] = false;
+        sensorRaw[row][col] = false;
+        sensorDebounceTime[row][col] = 0;
+      }
+    }
   }
 }
 
 void BoardDriver::checkCalibration() {
   if (!calibrated) {
     bool wasSkipped = runCalibration();
-    if (!wasSkipped) {
+    if (!wasSkipped)
       saveCalibration();
-    }
   }
 }
 
