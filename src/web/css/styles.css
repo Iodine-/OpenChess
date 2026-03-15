@@ -547,18 +547,29 @@ input[type="submit"]:hover,
     text-decoration: underline;
 }
 
-.ota-auto-toggle {
+.toggle-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 2px;
     padding: 10px 0;
+}
+
+.toggle-row-separated {
     border-bottom: 1px solid #555;
     margin-bottom: 10px;
 }
 
-.ota-auto-toggle span {
+.toggle-label {
     color: #fff;
-    font-size: 14px;
+    font-size: 15px;
+    margin: 0;
+}
+
+.toggle-description {
+    color: #aaa;
+    font-size: 13px;
+    margin: 2px 0 0;
 }
 
 /* Update Available Popup Overlay */

@@ -20,6 +20,18 @@
                 <h3>WiFi Settings</h3>
             </div>
             <div class="section-content" id="wifi-content">
+                <div class="toggle-row toggle-row-separated">
+                    <div>
+                        <label class="toggle-label" for="scanAllChannels">Scan All WiFi Channels</label>
+                        <p class="toggle-description">
+                            Enable for mesh networks (+10s connection time)
+                        </p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="scanAllChannels">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
                 <form id="wifiForm">
                     <div class="form-group">
                         <label for="ssid">WiFi SSID:</label>
@@ -32,16 +44,6 @@
                     </div>
                     <input type="submit" style="background-color: #4CAF50;" value="Connect to WiFi">
                 </form>
-                <div class="ota-auto-toggle">
-                    <span>Scan All WiFi Channels</span>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="scanAllChannels">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <p class="section-description" style="font-size: 12px; margin-top: 4px;">
-                    Enable for mesh networks with multiple APs on the same SSID. Adds ~10s to connection time.
-                </p>
             </div>
         </div>
 
@@ -134,10 +136,16 @@
                         <label for="hw-srDataPin">Shift Register Data Pin (SER)</label>
                         <input type="number" id="hw-srDataPin" min="0" max="39" class="text-input">
                     </div>
-                    <div class="ota-auto-toggle">
-                        <label for="hw-srInvert" style="margin-bottom: 0;">
-                            Invert Shift Register Outputs (PNP transistor)
-                        </label>
+                    <div class="toggle-row toggle-row-separated" style="padding-top: 0">
+                        <div>
+                            <label class="toggle-label" for="hw-srInvert"
+                                style="color: #ec8703; font-size: 20px; font-weight: bold;">
+                                Invert Shift Register Outputs
+                            </label>
+                            <p class="toggle-description">
+                                Enable if your sensors use PNP transistors
+                            </p>
+                        </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="hw-srInvert">
                             <span class="toggle-slider"></span>
@@ -168,8 +176,13 @@
                 <h3>Software Updates</h3>
             </div>
             <div class="section-content" id="ota-content">
-                <div class="ota-auto-toggle">
-                    <span>Automatic Updates</span>
+                <div class="toggle-row toggle-row-separated">
+                    <div>
+                        <label class="toggle-label" for="autoOtaToggle">Automatic Updates</label>
+                        <p class="toggle-description">
+                            Install new versions automatically when available
+                        </p>
+                    </div>
                     <label class="toggle-switch">
                         <input type="checkbox" id="autoOtaToggle">
                         <span class="toggle-slider"></span>
