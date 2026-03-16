@@ -65,6 +65,7 @@ class WiFiManagerESP32 {
   static void dnsTask(void* param);
   void startCaptivePortal();
   void stopCaptivePortal();
+  AsyncWebSocket wsLogs;
 
   Preferences prefs;
   String gameMode;
@@ -169,6 +170,7 @@ class WiFiManagerESP32 {
   void handleHardwareConfig(AsyncWebServerRequest* request);
   void handleGamesRequest(AsyncWebServerRequest* request);
   void handleDeleteGame(AsyncWebServerRequest* request);
+  void handleLogsToggle(AsyncWebServerRequest* request);
   // OTA update handlers
   void handleOtaStatus(AsyncWebServerRequest* request);
   void handleOtaSettings(AsyncWebServerRequest* request);

@@ -1,3 +1,4 @@
+#include "web_serial.h"
 #include "ota_updater.h"
 #include "board_driver.h"
 #include "led_colors.h"
@@ -38,13 +39,13 @@ bool OtaUpdater::beginHttpGet(HTTPClient& http, const String& url, int timeoutMs
   http.setUserAgent("OpenChess/" FIRMWARE_VERSION);
 
   if (!http.begin(url)) {
-    Serial.println("OTA: Failed to connect: " + url);
+    WebSerial.println("OTA: Failed to connect: " + url);
     return false;
   }
 
   int httpCode = http.GET();
   if (httpCode != 200) {
-    Serial.printf("OTA: HTTP %d from: %s\n", httpCode, url.c_str());
+    WebSerial.printf("OTA: HTTP %d from: %s\n", httpCode, url.c_str());
     http.end();
     return false;
   }
@@ -114,7 +115,7 @@ OtaUpdateInfo OtaUpdater::checkForUpdate() {
   OtaUpdateInfo info = {false, "", "", ""};
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("OTA: No WiFi connection, skipping update check");
+    WebSerial.println("OTA: No WiFi connection, skipping update check");
     return info;
   }
 
@@ -127,7 +128,7 @@ OtaUpdateInfo OtaUpdater::checkForUpdate() {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
-    Serial.printf("OTA: JSON parse error: %s\n", err.c_str());
+    WebSerial.printf("OTA: JSON parse error: %s\n", err.c_str());
     return info;
   }
 
@@ -135,17 +136,17 @@ OtaUpdateInfo OtaUpdater::checkForUpdate() {
   if (tagName.startsWith("v")) tagName = tagName.substring(1);
 
   if (tagName.isEmpty()) {
-    Serial.println("OTA: No tag found in release");
+    WebSerial.println("OTA: No tag found in release");
     return info;
   }
 
   info.version = tagName;
   if (!isNewerVersion(FIRMWARE_VERSION, tagName)) {
-    Serial.printf("OTA: Up to date (v%s)\n", FIRMWARE_VERSION);
+    WebSerial.printf("OTA: Up to date (v%s)\n", FIRMWARE_VERSION);
     return info;
   }
   info.available = true;
-  Serial.printf("OTA: Update available: v%s (current: %s)\n", info.version.c_str(), FIRMWARE_VERSION);
+  WebSerial.printf("OTA: Update available: v%s (current: %s)\n", info.version.c_str(), FIRMWARE_VERSION);
 
   // Find firmware.bin and web_assets.tar in release assets
   JsonArray assets = doc["assets"];
@@ -163,28 +164,28 @@ OtaUpdateInfo OtaUpdater::checkForUpdate() {
 
 bool OtaUpdater::applyFirmwareFromUrl(const String& url) {
   if (url.isEmpty()) {
-    Serial.println("OTA: No firmware URL provided");
+    WebSerial.println("OTA: No firmware URL provided");
     return false;
   }
 
-  Serial.println("OTA: Downloading firmware from: " + url);
+  WebSerial.println("OTA: Downloading firmware from: " + url);
 
   HTTPClient http;
   if (!beginHttpGet(http, url)) return false;
 
   int contentLength = http.getSize();
   if (contentLength <= 0) {
-    Serial.println("OTA: Invalid firmware content length");
+    WebSerial.println("OTA: Invalid firmware content length");
     http.end();
     return false;
   }
 
   WiFiClient* stream = http.getStreamPtr();
 
-  Serial.printf("OTA: Starting firmware update (%d bytes)\n", contentLength);
+  WebSerial.printf("OTA: Starting firmware update (%d bytes)\n", contentLength);
 
   if (!Update.begin(contentLength, U_FLASH)) {
-    Serial.printf("OTA: Not enough space for firmware update. Error: %s\n", Update.errorString());
+    WebSerial.printf("OTA: Not enough space for firmware update. Error: %s\n", Update.errorString());
     http.end();
     return false;
   }
@@ -196,19 +197,19 @@ bool OtaUpdater::applyFirmwareFromUrl(const String& url) {
   if (stopFlag) stopFlag->store(true);
 
   if (written != contentLength) {
-    Serial.printf("OTA: Firmware write failed. Written: %d/%d\n", written, contentLength);
+    WebSerial.printf("OTA: Firmware write failed. Written: %d/%d\n", written, contentLength);
     Update.abort();
     http.end();
     return false;
   }
 
   if (!Update.end(true)) {
-    Serial.printf("OTA: Firmware finalize failed: %s\n", Update.errorString());
+    WebSerial.printf("OTA: Firmware finalize failed: %s\n", Update.errorString());
     http.end();
     return false;
   }
 
-  Serial.println("OTA: Firmware update successful! Rebooting...");
+  WebSerial.println("OTA: Firmware update successful! Rebooting...");
   boardDriver->flashBoardAnimation(LedColors::Blue, 2);
   http.end();
   delay(1000);
@@ -218,18 +219,18 @@ bool OtaUpdater::applyFirmwareFromUrl(const String& url) {
 
 bool OtaUpdater::applyWebAssetsFromUrl(const String& url) {
   if (url.isEmpty()) {
-    Serial.println("OTA: No web assets URL provided");
+    WebSerial.println("OTA: No web assets URL provided");
     return false;
   }
 
-  Serial.println("OTA: Downloading web assets from: " + url);
+  WebSerial.println("OTA: Downloading web assets from: " + url);
 
   HTTPClient http;
   if (!beginHttpGet(http, url)) return false;
 
   int contentLength = http.getSize();
   if (contentLength <= 0) {
-    Serial.println("OTA: Invalid web assets content length");
+    WebSerial.println("OTA: Invalid web assets content length");
     http.end();
     return false;
   }
@@ -243,7 +244,7 @@ bool OtaUpdater::applyWebAssetsFromUrl(const String& url) {
 }
 
 bool OtaUpdater::applyWebAssetsFromStream(Stream& stream, size_t totalSize) {
-  Serial.printf("OTA: Starting web assets update (%d bytes)\n", totalSize);
+  WebSerial.printf("OTA: Starting web assets update (%d bytes)\n", totalSize);
 
   uint8_t header[TAR_BLOCK_SIZE];
   int filesWritten = 0;
@@ -303,11 +304,11 @@ bool OtaUpdater::applyWebAssetsFromStream(Stream& stream, size_t totalSize) {
       LittleFS.mkdir(outPath.substring(0, lastSlash));
     }
 
-    Serial.printf("OTA: Extracting %s (%d bytes)\n", outPath.c_str(), fileSize);
+    WebSerial.printf("OTA: Extracting %s (%d bytes)\n", outPath.c_str(), fileSize);
 
     File outFile = LittleFS.open(outPath, "w");
     if (!outFile) {
-      Serial.printf("OTA: Failed to create file: %s\n", outPath.c_str());
+      WebSerial.printf("OTA: Failed to create file: %s\n", outPath.c_str());
       skipTarBlocks(stream, fileSize, bytesRead);
       continue;
     }
@@ -338,7 +339,7 @@ bool OtaUpdater::applyWebAssetsFromStream(Stream& stream, size_t totalSize) {
     filesWritten++;
   }
 
-  Serial.printf("OTA: Web assets update complete. %d files extracted.\n", filesWritten);
+  WebSerial.printf("OTA: Web assets update complete. %d files extracted.\n", filesWritten);
 
   if (filesWritten > 0)
     boardDriver->flashBoardAnimation(LedColors::Cyan, 2);
@@ -351,17 +352,17 @@ bool OtaUpdater::applyWebAssetsFromStream(Stream& stream, size_t totalSize) {
 void OtaUpdater::applyUpdate(const OtaUpdateInfo& info) {
   // Apply web assets first (doesn't require reboot)
   if (!info.webAssetsUrl.isEmpty()) {
-    Serial.println("OTA: Updating web assets...");
+    WebSerial.println("OTA: Updating web assets...");
     if (applyWebAssetsFromUrl(info.webAssetsUrl))
-      Serial.println("OTA: Web assets updated successfully");
+      WebSerial.println("OTA: Web assets updated successfully");
     else
-      Serial.println("OTA: Web assets update failed");
+      WebSerial.println("OTA: Web assets update failed");
   }
 
   // Apply firmware update (triggers reboot on success)
   if (!info.firmwareUrl.isEmpty()) {
-    Serial.println("OTA: Updating firmware...");
+    WebSerial.println("OTA: Updating firmware...");
     if (!applyFirmwareFromUrl(info.firmwareUrl))
-      Serial.println("OTA: Firmware update failed");
+      WebSerial.println("OTA: Firmware update failed");
   }
 }

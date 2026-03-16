@@ -3,6 +3,7 @@
 #include "chess_utils.h"
 #include "move_history.h"
 #include "version.h"
+#include "web_serial.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -15,47 +16,48 @@ static const IPAddress AP_IP(200, 200, 200, 1);
 static const IPAddress AP_GATEWAY(200, 200, 200, 1);
 static const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(false), profileCount(0), connectedProfileIndex(-1), scanResults(nullptr), scanResultCount(0), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false), otaChecked(false) {
+WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), wsLogs("/ws/logs"), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(false), profileCount(0), connectedProfileIndex(-1), scanResults(nullptr), scanResultCount(0), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false), otaChecked(false) {
   promotion.reset();
   pendingWiFi.reset();
 }
 
 void WiFiManagerESP32::begin() {
-  Serial.println("=== Starting OpenChess WiFi Manager ===");
+  WebSerial.println("=== Starting OpenChess WiFi Manager ===");
 
   if (ChessUtils::ensureNvsInitialized()) {
     // Load WiFi profiles
     loadProfiles();
+
     // Load Lichess token
     prefs.begin("lichess", false);
     if (prefs.isKey("token"))
       lichessToken = prefs.getString("token", "");
     prefs.end();
-    if (lichessToken.length() > 0)
-      Serial.println("Lichess API token loaded from NVS");
+    if (lichessToken.length() > 0) {
+      WebSerial.println("Lichess API token loaded from NVS");
+    }
     // Load OTA auto-update preference
     prefs.begin("ota", false);
     autoOtaEnabled = prefs.getBool("autoUpdate", false);
     prefs.end();
   }
-
   bool connected = connectToSavedProfile();
-  Serial.println("==== WiFi Connection Information ====");
+  WebSerial.println("==== WiFi Connection Information ====");
   if (connected) {
-    Serial.println("Connected to WiFi network:");
-    Serial.println("- SSID: " + profiles[0].ssid);
-    Serial.println("- Password: " + profiles[0].password);
-    Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.localIP().toString() + ")");
+    WebSerial.println("Connected to WiFi network:");
+    WebSerial.println("- SSID: " + profiles[0].ssid);
+    WebSerial.println("- Password: " + profiles[0].password);
+    WebSerial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.localIP().toString() + ")");
   } else {
     startAPFallback();
-    Serial.println("A WiFi Access Point was created:");
-    Serial.println("- SSID: " AP_SSID);
-    Serial.println("- Password: " AP_PASSWORD);
-    Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.softAPIP().toString() + ")");
-    Serial.println("- MAC Address: " + WiFi.softAPmacAddress());
-    Serial.println("Configure WiFi credentials from WebUI to join your WiFi network");
+    WebSerial.println("A WiFi Access Point was created:");
+    WebSerial.println("- SSID: " AP_SSID);
+    WebSerial.println("- Password: " AP_PASSWORD);
+    WebSerial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.softAPIP().toString() + ")");
+    WebSerial.println("- MAC Address: " + WiFi.softAPmacAddress());
+    WebSerial.println("Configure WiFi credentials from WebUI to join your WiFi network");
   }
-  Serial.println("=====================================\n");
+  WebSerial.println("=====================================\n");
 
   if (autoOtaEnabled && lastUpdateInfo.available)
     otaUpdater.applyUpdate(lastUpdateInfo);
@@ -102,6 +104,20 @@ void WiFiManagerESP32::begin() {
   server.on("/ota/status", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleOtaStatus(request); });
   server.on("/ota/settings", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleOtaSettings(request); });
   server.on("/ota/apply", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleOtaApply(request); });
+  // Web Serial Logs endpoints
+  server.on("/logs/toggle", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleLogsToggle(request); });
+  server.on("/logs/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    request->send(200, "application/json", String("{\"enabled\":") + (WebSerial.isEnabled() ? "true" : "false") + "}");
+  });
+
+  wsLogs.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+    if (type == WS_EVT_CONNECT) {
+      WebSerial.sendHistory(client->id());
+    }
+  });
+  server.addHandler(&wsLogs);
+  WebSerial.begin(&wsLogs);
+
   // OTA manual upload endpoints - JS sends raw binary body (application/octet-stream), so only the body handler (3rd callback) fires; the multipart file handler (2nd) is unused.
   server.on(
       "/ota/upload/firmware", HTTP_POST,
@@ -121,7 +137,7 @@ void WiFiManagerESP32::begin() {
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
   server.onNotFound([](AsyncWebServerRequest* request) { request->send(404, "text/plain", "Not Found"); });
   server.begin();
-  Serial.println("Web server started on port: " + String(HTTP_PORT));
+  WebSerial.println("Web server started on port: " + String(HTTP_PORT));
 
   xTaskCreate(pendingWiFiBackgroundTask, "WiFi_Pending_Task", 8192, this, 4, &pendingWiFiTaskHandle);
 }
@@ -209,10 +225,10 @@ void WiFiManagerESP32::handleBoardEditSuccess(AsyncWebServerRequest* request) {
   if (request->hasArg("fen")) {
     pendingFenEdit = request->arg("fen");
     hasPendingEdit = true;
-    Serial.println("Board edit received (FEN): " + pendingFenEdit);
+    WebSerial.println("Board edit received (FEN): " + pendingFenEdit);
     request->send(200, "text/plain", "OK");
   } else {
-    Serial.println("Board edit failed: no FEN parameter");
+    WebSerial.println("Board edit failed: no FEN parameter");
     request->send(400, "text/plain", "Missing FEN parameter");
   }
 }
@@ -223,7 +239,7 @@ void WiFiManagerESP32::handleResign(AsyncWebServerRequest* request) {
     if (color == "w" || color == "b") {
       pendingResignColor = color.charAt(0);
       hasPendingResign = true;
-      Serial.printf("Resign received from web: %s resigns\n", color == "w" ? "White" : "Black");
+      WebSerial.printf("Resign received from web: %s resigns\n", color == "w" ? "White" : "Black");
       request->send(200, "text/plain", "OK");
     } else {
       request->send(400, "text/plain", "Invalid color (use 'w' or 'b')");
@@ -235,7 +251,7 @@ void WiFiManagerESP32::handleResign(AsyncWebServerRequest* request) {
 
 void WiFiManagerESP32::handleDraw(AsyncWebServerRequest* request) {
   hasPendingDraw = true;
-  Serial.println("Draw agreement received from web");
+  WebSerial.println("Draw agreement received from web");
   request->send(200, "text/plain", "OK");
 }
 
@@ -246,7 +262,7 @@ void WiFiManagerESP32::handleConnectWiFi(AsyncWebServerRequest* request) {
     if (newScanAll != scanAllChannels) {
       scanAllChannels = newScanAll;
       saveProfiles(false);
-      Serial.printf("WiFi scan all channels: %s\n", scanAllChannels ? "enabled" : "disabled");
+      WebSerial.printf("WiFi scan all channels: %s\n", scanAllChannels ? "enabled" : "disabled");
     }
     // If only the toggle was sent, respond OK
     if (!request->hasArg("action")) {
@@ -340,7 +356,7 @@ void WiFiManagerESP32::handleGameSelection(AsyncWebServerRequest* request) {
           break;
       }
       botConfig.playerIsWhite = request->arg("playerColor") == "white";
-      Serial.printf("Bot configuration received: Depth=%d, Player is %s\n", botConfig.stockfishSettings.depth, botConfig.playerIsWhite ? "White" : "Black");
+      WebSerial.printf("Bot configuration received: Depth=%d, Player is %s\n", botConfig.stockfishSettings.depth, botConfig.playerIsWhite ? "White" : "Black");
     } else {
       request->send(400, "text/plain", "Missing bot parameters");
       return;
@@ -352,9 +368,9 @@ void WiFiManagerESP32::handleGameSelection(AsyncWebServerRequest* request) {
       request->send(400, "text/plain", "No Lichess API token configured");
       return;
     }
-    Serial.println("Lichess mode selected via web");
+    WebSerial.println("Lichess mode selected via web");
   }
-  Serial.println("Game mode selected via web: " + gameMode);
+  WebSerial.println("Game mode selected via web: " + gameMode);
   request->send(200, "text/plain", "OK");
 }
 
@@ -399,7 +415,7 @@ void WiFiManagerESP32::handleSaveLichessToken(AsyncWebServerRequest* request) {
   prefs.end();
 
   lichessToken = newToken;
-  Serial.println("Lichess API token saved to NVS");
+  WebSerial.println("Lichess API token saved to NVS");
 
   request->send(200, "text/plain", "OK");
 }
@@ -434,7 +450,7 @@ void WiFiManagerESP32::handleBoardSettings(AsyncWebServerRequest* request) {
 
   if (changed) {
     boardDriver->saveLedSettings();
-    Serial.println("Board settings updated via web interface");
+    WebSerial.println("Board settings updated via web interface");
     request->send(200, "text/plain", "OK");
   } else {
     request->send(400, "text/plain", "No valid settings provided");
@@ -563,7 +579,7 @@ void WiFiManagerESP32::handlePromotion(AsyncWebServerRequest* request) {
     piece.toLowerCase();
     if (piece == "q" || piece == "r" || piece == "b" || piece == "n") {
       promotion.choice = piece.charAt(0);
-      Serial.printf("Promotion choice received from web: %c\n", (char)promotion.choice);
+      WebSerial.printf("Promotion choice received from web: %c\n", (char)promotion.choice);
       request->send(200, "text/plain", "OK");
     } else {
       request->send(400, "text/plain", "Invalid piece (use 'q', 'r', 'b', or 'n')");
@@ -577,7 +593,7 @@ void WiFiManagerESP32::startPromotionWait(char color) {
   promotion.color = color;
   promotion.choice = ' ';
   promotion.pending = true;
-  Serial.printf("Promotion wait started for %s\n", color == 'w' ? "White" : "Black");
+  WebSerial.printf("Promotion wait started for %s\n", color == 'w' ? "White" : "Black");
 }
 
 void WiFiManagerESP32::clearPromotion() {
@@ -592,7 +608,7 @@ bool WiFiManagerESP32::isWebClientConnected() const {
 void WiFiManagerESP32::checkPendingWiFi() {
   // Auto-reconnect: if we were connected to a network and lost it, try to reconnect
   if (connectedProfileIndex >= 0 && WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi connection lost, attempting reconnect...");
+    WebSerial.println("WiFi connection lost, attempting reconnect...");
     connectedProfileIndex = -1;
     if (!connectToSavedProfile()) startAPFallback();
   }
@@ -610,7 +626,7 @@ void WiFiManagerESP32::checkPendingWiFi() {
       int idx = pendingWiFi.profileIndex;
       if (idx >= 0 && idx < profileCount) {
         bool deletingConnected = (idx == connectedProfileIndex);
-        Serial.printf("Deleting WiFi profile %d: %s\n", idx, profiles[idx].ssid.c_str());
+        WebSerial.printf("Deleting WiFi profile %d: %s\n", idx, profiles[idx].ssid.c_str());
         // If deleting the connected profile, disconnect
         if (deletingConnected) {
           WiFi.disconnect(false, true);
@@ -684,9 +700,9 @@ void WiFiManagerESP32::checkPendingWiFi() {
         }
         connectedProfileIndex = 0;
         saveProfiles();
-        Serial.println("New WiFi profile saved and connected!");
+        WebSerial.println("New WiFi profile saved and connected!");
       } else {
-        Serial.println("Failed to connect to new network, trying saved profiles...");
+        WebSerial.println("Failed to connect to new network, trying saved profiles...");
         if (!connectToSavedProfile()) startAPFallback();
       }
       break;
@@ -699,7 +715,7 @@ void WiFiManagerESP32::checkPendingWiFi() {
 
 bool WiFiManagerESP32::ensureConnected() {
   if (WiFi.status() == WL_CONNECTED) return true;
-  Serial.println("WiFi not connected, attempting reconnect...");
+  WebSerial.println("WiFi not connected, attempting reconnect...");
   if (connectToSavedProfile()) return true;
   startAPFallback();
   return false;
@@ -709,223 +725,9 @@ void WiFiManagerESP32::startMDNS() {
   MDNS.end();
   if (MDNS.begin(MDNS_HOSTNAME)) {
     MDNS.addService("http", "tcp", HTTP_PORT);
-    Serial.println("mDNS started: http://" MDNS_HOSTNAME ".local");
+    WebSerial.println("mDNS started: http://" MDNS_HOSTNAME ".local");
   } else {
-    Serial.println("mDNS failed to start");
-  }
-}
-
-void WiFiManagerESP32::handleGamesRequest(AsyncWebServerRequest* request) {
-  if (request->hasArg("id")) {
-    String idStr = request->arg("id");
-
-    // GET /games?id=live1 — return live moves file directly
-    if (idStr == "live1") {
-      if (!MoveHistory::quietExists("/games/live.bin")) {
-        request->send(404, "text/plain", "No live game");
-        return;
-      }
-      AsyncWebServerResponse* response = request->beginResponse(LittleFS, "/games/live.bin", "application/octet-stream", true);
-      request->send(response);
-      return;
-    }
-
-    // GET /games?id=live2 — return live FEN table file directly
-    if (idStr == "live2") {
-      if (!MoveHistory::quietExists("/games/live_fen.bin")) {
-        request->send(404, "text/plain", "No live FEN table");
-        return;
-      }
-      AsyncWebServerResponse* response = request->beginResponse(LittleFS, "/games/live_fen.bin", "application/octet-stream", true);
-      request->send(response);
-      return;
-    }
-
-    // GET /games?id=N — return binary of game N
-    int id = idStr.toInt();
-    if (id <= 0) {
-      request->send(400, "text/plain", "Invalid game id");
-      return;
-    }
-
-    String path = MoveHistory::gamePath(id);
-    if (!MoveHistory::quietExists(path.c_str())) {
-      request->send(404, "text/plain", "Game not found");
-      return;
-    }
-    // Serve file directly from LittleFS
-    AsyncWebServerResponse* response = request->beginResponse(LittleFS, path, "application/octet-stream", true);
-    request->send(response);
-  } else {
-    // GET /games — return JSON list of all saved games
-    request->send(200, "application/json", moveHistory->getGameListJSON());
-  }
-}
-
-void WiFiManagerESP32::handleDeleteGame(AsyncWebServerRequest* request) {
-  if (!request->hasArg("id")) {
-    request->send(400, "text/plain", "Missing id parameter");
-    return;
-  }
-
-  int id = request->arg("id").toInt();
-  if (id <= 0) {
-    request->send(400, "text/plain", "Invalid game id");
-    return;
-  }
-
-  if (moveHistory->deleteGame(id))
-    request->send(200, "text/plain", "OK");
-  else
-    request->send(404, "text/plain", "Game not found");
-}
-
-// ========== OTA Update Handlers ==========
-
-void WiFiManagerESP32::handleOtaStatus(AsyncWebServerRequest* request) {
-  if (lastUpdateInfo.version.isEmpty()) {
-    request->send(400, "text/plain", "No update info available.");
-    return;
-  }
-
-  JsonDocument doc;
-  doc["version"] = FIRMWARE_VERSION;
-  doc["autoUpdate"] = autoOtaEnabled;
-  doc["available"] = lastUpdateInfo.available;
-  doc["latestVersion"] = lastUpdateInfo.version;
-  doc["hasFirmware"] = lastUpdateInfo.firmwareUrl.length() > 0;
-  doc["hasWebAssets"] = lastUpdateInfo.webAssetsUrl.length() > 0;
-  String output;
-  serializeJson(doc, output);
-  request->send(200, "application/json", output);
-}
-
-void WiFiManagerESP32::handleOtaSettings(AsyncWebServerRequest* request) {
-  if (request->hasArg("autoUpdate")) {
-    autoOtaEnabled = request->arg("autoUpdate") == "1";
-    if (ChessUtils::ensureNvsInitialized()) {
-      Preferences p;
-      p.begin("ota", false);
-      p.putBool("autoUpdate", autoOtaEnabled);
-      p.end();
-    }
-    Serial.printf("OTA: Auto-update %s\n", autoOtaEnabled ? "enabled" : "disabled");
-    request->send(200, "text/plain", "OK");
-  } else {
-    request->send(400, "text/plain", "Missing parameter");
-  }
-}
-
-// Parameters passed to the OTA apply task via heap allocation (avoids static variable race conditions)
-struct OtaApplyParams {
-  OtaUpdateInfo info;
-  OtaUpdater* updater;
-};
-
-void WiFiManagerESP32::handleOtaApply(AsyncWebServerRequest* request) {
-  if (!lastUpdateInfo.available) {
-    request->send(400, "text/plain", "No update available. Check for updates first.");
-    return;
-  }
-
-  request->send(200, "text/plain", "Updating... The board will reboot when complete.");
-
-  // Run update in a separate task to not block the web server response.
-  // Heap-allocate params so the info survives after this function returns.
-  auto* params = new OtaApplyParams{lastUpdateInfo, &otaUpdater};
-  lastUpdateInfo.available = false; // Prevent concurrent apply requests
-
-  xTaskCreate(
-      [](void* param) {
-        auto* p = static_cast<OtaApplyParams*>(param);
-        delay(500); // Give time for the HTTP response to be sent
-        p->updater->applyUpdate(p->info);
-        delete p;
-        vTaskDelete(NULL);
-      },
-      "ota_apply", 8192, params, 1, NULL);
-}
-
-void WiFiManagerESP32::onFirmwareUploadBody(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
-  // Can't use applyFirmwareFromStream() here — ESPAsyncWebServer delivers the body in async chunks,
-  // not as a Stream. We call Update.begin/write/end incrementally across chunk callbacks instead.
-  static std::atomic<bool>* stopFlag = nullptr;
-  if (index == 0) {
-    if (stopFlag == nullptr)
-      stopFlag = boardDriver->startWaitingAnimation();
-    Serial.printf("OTA: Firmware upload started (%d bytes)\n", total);
-    if (!Update.begin(total, U_FLASH)) {
-      Serial.printf("OTA: Not enough space: %s\n", Update.errorString());
-      return;
-    }
-  }
-  if (Update.isRunning()) {
-    if (Update.write(data, len) != len) {
-      Serial.printf("OTA: Write failed: %s\n", Update.errorString());
-      Update.abort();
-    }
-  }
-  if (index + len == total) {
-    if (stopFlag) {
-      stopFlag->store(true);
-      stopFlag = nullptr;
-    }
-    if (!Update.isRunning()) {
-      // Update.begin() failed or a write error aborted the update
-      request->send(500, "text/plain", "Firmware update failed");
-    } else if (Update.end(true)) {
-      Serial.println("OTA: Firmware upload complete, rebooting...");
-      request->send(200, "text/plain", "Firmware updated! Rebooting...");
-      boardDriver->flashBoardAnimation(LedColors::Blue, 2);
-      delay(500);
-      ESP.restart();
-    } else {
-      Serial.printf("OTA: Finalize failed: %s\n", Update.errorString());
-      request->send(500, "text/plain", String("Firmware update failed: ") + Update.errorString());
-    }
-  }
-}
-
-void WiFiManagerESP32::onWebAssetsUploadBody(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
-  // Can't use applyWebAssetsFromStream() directly — the TAR parser reads 512-byte headers
-  // sequentially from a Stream, but async chunks can split a header across callbacks.
-  // So we buffer the TAR to a temp file, then pass it as a Stream to the parser.
-  static std::atomic<bool>* stopFlag = nullptr;
-  if (index == 0) {
-    if (stopFlag == nullptr)
-      stopFlag = boardDriver->startWaitingAnimation();
-    Serial.printf("OTA: Web assets upload started (%d bytes)\n", total);
-    otaTarFile = LittleFS.open("/ota_temp.tar", "w");
-    if (!otaTarFile) {
-      Serial.println("OTA: Failed to create temp file");
-      return;
-    }
-  }
-  if (otaTarFile)
-    otaTarFile.write(data, len);
-  if (index + len == total) {
-    if (otaTarFile) {
-      otaTarFile.close();
-      File tarFile = LittleFS.open("/ota_temp.tar", "r");
-      if (tarFile) {
-        size_t tarSize = tarFile.size();
-        bool success = otaUpdater.applyWebAssetsFromStream(tarFile, tarSize);
-        tarFile.close();
-        LittleFS.remove("/ota_temp.tar");
-        if (success)
-          request->send(200, "text/plain", "Web assets updated successfully!");
-        else
-          request->send(500, "text/plain", "Web assets update failed");
-      } else {
-        request->send(500, "text/plain", "Failed to read temp file");
-      }
-    } else {
-      request->send(500, "text/plain", "Upload failed");
-    }
-    if (stopFlag) {
-      stopFlag->store(true);
-      stopFlag = nullptr;
-    }
+    WebSerial.println("mDNS failed to start");
   }
 }
 
@@ -951,10 +753,10 @@ void WiFiManagerESP32::loadProfiles() {
         memset(profiles[i].bssid, 0, 6);
       }
     }
-    Serial.printf("  Profile %d: SSID=%s, hasBSSID=%s, channel=%d\n", i, profiles[i].ssid.c_str(), profiles[i].hasBssid ? "yes" : "no", profiles[i].channel);
+    WebSerial.printf("  Profile %d: SSID=%s, hasBSSID=%s, channel=%d\n", i, profiles[i].ssid.c_str(), profiles[i].hasBssid ? "yes" : "no", profiles[i].channel);
   }
   prefs.end();
-  Serial.printf("Loaded %d WiFi profile(s) from NVS\n", profileCount);
+  WebSerial.printf("Loaded %d WiFi profile(s) from NVS\n", profileCount);
 }
 
 void WiFiManagerESP32::saveProfiles(bool saveAllProfiles) {
@@ -1001,7 +803,7 @@ bool WiFiManagerESP32::waitForConnection(int maxAttempts) {
   for (int i = 0; i < maxAttempts; i++) {
     boardDriver->showConnectingAnimation();
     wl_status_t st = WiFi.status();
-    Serial.printf("  Attempt %d/%d - Status: %d\n", i + 1, maxAttempts, st);
+    WebSerial.printf("  Attempt %d/%d - Status: %d\n", i + 1, maxAttempts, st);
     if (st == WL_CONNECTED) return true;
     if (i >= 3 && (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL)) break;
   }
@@ -1011,9 +813,9 @@ bool WiFiManagerESP32::waitForConnection(int maxAttempts) {
 bool WiFiManagerESP32::tryConnect(const String& ssid, const String& password, const uint8_t* bssid, uint8_t channel) {
   bool isFast = (bssid != nullptr && channel > 0);
   if (isFast)
-    Serial.printf("  Fast connect: SSID=%s, Password=%s, Channel=%d, BSSID=%02X:%02X:%02X:%02X:%02X:%02X\n", ssid.c_str(), password.c_str(), channel, bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+    WebSerial.printf("  Fast connect: SSID=%s, Password=%s, Channel=%d, BSSID=%02X:%02X:%02X:%02X:%02X:%02X\n", ssid.c_str(), password.c_str(), channel, bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
   else
-    Serial.printf("  Standard connect: SSID=%s, Password=%s\n", ssid.c_str(), password.c_str());
+    WebSerial.printf("  Standard connect: SSID=%s, Password=%s\n", ssid.c_str(), password.c_str());
 
   stopCaptivePortal();
   WiFi.disconnect(false, true);
@@ -1054,11 +856,11 @@ bool WiFiManagerESP32::tryConnectProfile(int index) {
   // Try fast BSSID+channel connect first (skip if scanAllChannels is enabled)
   if (p.hasBssid && !scanAllChannels) {
     if (tryConnect(p.ssid, p.password, p.bssid, p.channel)) {
-      Serial.println("  Fast connect succeeded!");
+      WebSerial.println("  Fast connect succeeded!");
       connectedProfileIndex = index;
       return true;
     }
-    Serial.println("  Fast connect failed, trying standard...");
+    WebSerial.println("  Fast connect failed, trying standard...");
   }
 
   // Standard connect (scans for the SSID)
@@ -1069,14 +871,14 @@ bool WiFiManagerESP32::tryConnectProfile(int index) {
       memcpy(p.bssid, connBssid, 6);
       p.channel = WiFi.channel();
       p.hasBssid = true;
-      Serial.printf("  Cached BSSID=%02X:%02X:%02X:%02X:%02X:%02X, Channel=%d\n", p.bssid[0], p.bssid[1], p.bssid[2], p.bssid[3], p.bssid[4], p.bssid[5], p.channel);
+      WebSerial.printf("  Cached BSSID=%02X:%02X:%02X:%02X:%02X:%02X, Channel=%d\n", p.bssid[0], p.bssid[1], p.bssid[2], p.bssid[3], p.bssid[4], p.bssid[5], p.channel);
     }
     connectedProfileIndex = index;
     return true;
   }
 
   connectedProfileIndex = -1;
-  Serial.printf("  Failed to connect to %s\n", p.ssid.c_str());
+  WebSerial.printf("  Failed to connect to %s\n", p.ssid.c_str());
   return false;
 }
 
@@ -1092,12 +894,12 @@ bool WiFiManagerESP32::connectToSavedProfile() {
 }
 
 void WiFiManagerESP32::startAPFallback() {
-  Serial.println("Starting AP fallback...");
+  WebSerial.println("Starting AP fallback...");
   WiFi.mode(WIFI_AP);
   if (!WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET))
-    Serial.println("ERROR: Failed to configure AP IP settings!");
+    WebSerial.println("ERROR: Failed to configure AP IP settings!");
   if (!WiFi.softAP(AP_SSID, AP_PASSWORD))
-    Serial.println("ERROR: Failed to create Access Point!");
+    WebSerial.println("ERROR: Failed to create Access Point!");
   startMDNS();
   connectedProfileIndex = -1;
   startCaptivePortal();
@@ -1109,7 +911,7 @@ void WiFiManagerESP32::startCaptivePortal() {
   // Start DNS server for captive portal - resolves all domains to this AP's IP
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
   dnsServer.start(53, "*", WiFi.softAPIP());
-  Serial.println("Captive portal DNS started, IP: " + WiFi.softAPIP().toString());
+  WebSerial.println("Captive portal DNS started, IP: " + WiFi.softAPIP().toString());
   xTaskCreate(dnsTask, "DNS_Task", 2048, this, 5, &dnsTaskHandle);
 }
 
@@ -1118,7 +920,7 @@ void WiFiManagerESP32::stopCaptivePortal() {
   vTaskDelete(dnsTaskHandle);
   dnsTaskHandle = nullptr;
   dnsServer.stop();
-  Serial.println("Captive portal DNS stopped");
+  WebSerial.println("Captive portal DNS stopped");
 }
 
 void WiFiManagerESP32::dnsTask(void* param) {
@@ -1143,9 +945,9 @@ void WiFiManagerESP32::performScan() {
   static bool scanInProgress = false;
   if (scanInProgress) return;
   scanInProgress = true;
-  Serial.println("Starting WiFi scan...");
+  WebSerial.println("Starting WiFi scan...");
   int n = WiFi.scanNetworks(false, false);
-  Serial.printf("Scan found %d networks\n", n);
+  WebSerial.printf("Scan found %d networks\n", n);
   if (n > 0) {
     if (scanResults) {
       delete[] scanResults;
@@ -1168,4 +970,15 @@ void WiFiManagerESP32::performScan() {
   }
   WiFi.scanDelete();
   scanInProgress = false;
+}
+
+void WiFiManagerESP32::handleLogsToggle(AsyncWebServerRequest* request) {
+  if (request->hasParam("enabled", true)) {
+    String enabledStr = request->getParam("enabled", true)->value();
+    bool enable = (enabledStr == "1" || enabledStr == "true");
+    WebSerial.setEnabled(enable);
+    request->send(200, "text/plain", "OK");
+  } else {
+    request->send(400, "text/plain", "Missing enabled parameter");
+  }
 }

@@ -1,3 +1,4 @@
+#include "web_serial.h"
 #include "chess_moves.h"
 #include "chess_utils.h"
 #include "led_colors.h"
@@ -8,10 +9,10 @@
 ChessMoves::ChessMoves(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh) : ChessGame(bd, ce, wm, mh) {}
 
 void ChessMoves::begin() {
-  Serial.println("=== Starting Chess Moves Mode ===");
+  WebSerial.println("=== Starting Chess Moves Mode ===");
   initializeBoard();
   if (moveHistory->hasLiveGame()) {
-    Serial.println("Resuming live game...");
+    WebSerial.println("Resuming live game...");
     replaying = true;
     moveHistory->replayIntoGame(this);
     replaying = false;

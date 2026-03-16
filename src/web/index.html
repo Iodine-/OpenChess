@@ -320,6 +320,27 @@
             </div>
         </div>
 
+        <!-- Live Logs Section -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('logs')">
+                <span class="section-icon" id="logs-icon">▶</span>
+                <h3>Live System Logs</h3>
+            </div>
+            <div class="section-content" id="logs-content">
+                <p class="section-description" style="margin-bottom: 10px;">
+                    View real-time serial output from the board. Enable only when debugging to preserve CPU/WiFi performance.
+                </p>
+                <div class="ota-auto-toggle" style="margin-bottom: 10px;">
+                    <span>Enable Web Serial</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="logsToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="log-terminal" style="background-color: #1e1e1e; color: #00ff00; font-family: monospace; font-size: 12px; padding: 10px; height: 200px; overflow-y: auto; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; display: none;">
+                </div>
+            </div>
+        </div>
         <a href="./game.html" class="button">GameMode Selection</a>
         <a href="./board.html" class="button">View Board</a>
     </div>
@@ -369,7 +390,8 @@
             lichess: false,
             board: false,
             hwconfig: false,
-            ota: false
+            ota: false,
+            logs: false
         };
 
         function toggleSection(name) {
@@ -965,6 +987,88 @@
             xhr.setRequestHeader('Content-Type', 'application/octet-stream');
             xhr.setRequestHeader('X-File-Name', file.name);
             xhr.send(file);
+        }
+
+        // ========== Live Logs (Web Serial) ==========
+        let logsWs = null;
+        const logsToggle = document.getElementById('logsToggle');
+        const logTerminal = document.getElementById('log-terminal');
+
+        function fetchLogsStatus() {
+            fetch('/logs/status')
+                .then(response => response.json())
+                .then(data => {
+                    logsToggle.checked = data.enabled;
+                    if (data.enabled) {
+                        logTerminal.style.display = 'block';
+                        connectLogsWebSocket();
+                    } else {
+                        logTerminal.style.display = 'none';
+                    }
+                })
+                .catch(() => console.error('Failed to fetch logs status'));
+        }
+        fetchLogsStatus();
+
+        logsToggle.addEventListener('change', function () {
+            const isEnabled = this.checked;
+            
+            const formData = new URLSearchParams();
+            formData.append('enabled', isEnabled ? '1' : '0');
+            
+            fetch('/logs/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            }).then(response => {
+                if (response.ok) {
+                    if (isEnabled) {
+                        logTerminal.style.display = 'block';
+                        connectLogsWebSocket();
+                    } else {
+                        logTerminal.style.display = 'none';
+                        if (logsWs) {
+                            logsWs.close();
+                            logsWs = null;
+                        }
+                    }
+                }
+            });
+        });
+
+        function connectLogsWebSocket() {
+            if (logsWs && logsWs.readyState !== WebSocket.CLOSED) return;
+            
+            const wsUrl = `ws://${window.location.host}/ws/logs`;
+            logsWs = new WebSocket(wsUrl);
+            
+            logsWs.onopen = function() {
+                logTerminal.textContent += "\n--- Connected to Web Serial ---\n";
+                logTerminal.scrollTop = logTerminal.scrollHeight;
+            };
+            
+            logsWs.onmessage = function(event) {
+                logTerminal.textContent += event.data;
+                // Auto-scroll to bottom
+                logTerminal.scrollTop = logTerminal.scrollHeight;
+                
+                // Limit buffer size to prevent browser memory issues (keep last 50000 chars)
+                if (logTerminal.textContent.length > 50000) {
+                    logTerminal.textContent = logTerminal.textContent.substring(logTerminal.textContent.length - 40000);
+                }
+            };
+            
+            logsWs.onclose = function() {
+                if (logsToggle.checked) {
+                    logTerminal.textContent += "\n--- Disconnected. Retrying... ---\n";
+                    logTerminal.scrollTop = logTerminal.scrollHeight;
+                    setTimeout(connectLogsWebSocket, 2000);
+                }
+            };
+            
+            logsWs.onerror = function() {
+                // handled by onclose
+            };
         }
     </script>
 </body>

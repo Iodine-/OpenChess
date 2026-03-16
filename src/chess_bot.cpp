@@ -1,3 +1,4 @@
+#include "web_serial.h"
 #include "chess_bot.h"
 #include "chess_utils.h"
 #include "led_colors.h"
@@ -9,15 +10,15 @@
 ChessBot::ChessBot(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh, BotConfig cfg) : ChessGame(bd, ce, wm, mh), botConfig(cfg), currentEvaluation(0.0) {}
 
 void ChessBot::begin() {
-  Serial.println("=== Starting Chess Bot Mode ===");
-  Serial.printf("Player plays: %s\n", botConfig.playerIsWhite ? "White" : "Black");
-  Serial.printf("Bot plays: %s\n", botConfig.playerIsWhite ? "Black" : "White");
-  Serial.printf("Bot Difficulty: Depth %d, Timeout %dms\n", botConfig.stockfishSettings.depth, botConfig.stockfishSettings.timeoutMs);
-  Serial.println("====================================");
+  WebSerial.println("=== Starting Chess Bot Mode ===");
+  WebSerial.printf("Player plays: %s\n", botConfig.playerIsWhite ? "White" : "Black");
+  WebSerial.printf("Bot plays: %s\n", botConfig.playerIsWhite ? "Black" : "White");
+  WebSerial.printf("Bot Difficulty: Depth %d, Timeout %dms\n", botConfig.stockfishSettings.depth, botConfig.stockfishSettings.timeoutMs);
+  WebSerial.println("====================================");
   if (wifiManager->ensureConnected()) {
     initializeBoard();
     if (moveHistory->hasLiveGame()) {
-      Serial.println("Resuming live bot game...");
+      WebSerial.println("Resuming live bot game...");
       replaying = true;
       moveHistory->replayIntoGame(this);
       replaying = false;
@@ -28,7 +29,7 @@ void ChessBot::begin() {
     }
     waitForBoardSetup(board);
   } else {
-    Serial.println("Failed to connect to WiFi. Bot mode unavailable.");
+    WebSerial.println("Failed to connect to WiFi. Bot mode unavailable.");
     boardDriver->flashBoardAnimation(LedColors::Red);
     gameOver = true;
     return;
@@ -68,11 +69,11 @@ String ChessBot::makeStockfishRequest(const String& fen) {
   // Set insecure mode for SSL (or add proper certificate validation)
   client.setInsecure();
   String path = StockfishAPI::buildRequestURL(fen, botConfig.stockfishSettings.depth);
-  Serial.println("Stockfish request: " STOCKFISH_API_URL + path);
+  WebSerial.println("Stockfish request: " STOCKFISH_API_URL + path);
   // Retry logic
   for (int attempt = 1; attempt <= botConfig.stockfishSettings.maxRetries; attempt++) {
     if (attempt > 1)
-      Serial.println("Attempt: " + String(attempt) + "/" + String(botConfig.stockfishSettings.maxRetries));
+      WebSerial.println("Attempt: " + String(attempt) + "/" + String(botConfig.stockfishSettings.maxRetries));
     if (client.connect(STOCKFISH_API_URL, STOCKFISH_API_PORT)) {
       client.println("GET " + path + " HTTP/1.1");
       client.println("Host: " STOCKFISH_API_URL);
@@ -96,26 +97,26 @@ String ChessBot::makeStockfishRequest(const String& fen) {
         return response;
     }
 
-    Serial.println("API request timeout or empty response");
+    WebSerial.println("API request timeout or empty response");
     if (attempt < botConfig.stockfishSettings.maxRetries) {
-      Serial.println("Retrying...");
+      WebSerial.println("Retrying...");
       delay(500);
     }
   }
 
-  Serial.println("All API request attempts failed");
+  WebSerial.println("All API request attempts failed");
   return "";
 }
 
 bool ChessBot::parseStockfishResponse(const String& response, String& bestMove, float& evaluation) {
   StockfishResponse stockfishResp;
   if (!StockfishAPI::parseResponse(response, stockfishResp)) {
-    Serial.printf("Failed to parse Stockfish response: %s\n", stockfishResp.errorMessage.c_str());
+    WebSerial.printf("Failed to parse Stockfish response: %s\n", stockfishResp.errorMessage.c_str());
     return false;
   }
   bestMove = stockfishResp.bestMove;
   if (stockfishResp.hasMate) {
-    Serial.printf("Mate in %d moves\n", stockfishResp.mateInMoves);
+    WebSerial.printf("Mate in %d moves\n", stockfishResp.mateInMoves);
     // Convert mate to a large evaluation (positive or negative based on direction)
     evaluation = stockfishResp.mateInMoves > 0 ? 100.0f : -100.0f;
   } else {
@@ -126,35 +127,35 @@ bool ChessBot::parseStockfishResponse(const String& response, String& bestMove, 
 }
 
 void ChessBot::makeBotMove() {
-  Serial.println("=== BOT MOVE CALCULATION ===");
+  WebSerial.println("=== BOT MOVE CALCULATION ===");
   std::atomic<bool>* stopAnimation = boardDriver->startThinkingAnimation();
   String bestMove;
   String response = makeStockfishRequest(ChessUtils::boardToFEN(board, currentTurn, chessEngine));
   if (stopAnimation) stopAnimation->store(true);
   if (parseStockfishResponse(response, bestMove, currentEvaluation)) {
-    Serial.println("=== STOCKFISH EVALUATION ===");
-    Serial.printf("%s advantage: %.2f pawns\n", currentEvaluation > 0 ? "White" : "Black", currentEvaluation);
+    WebSerial.println("=== STOCKFISH EVALUATION ===");
+    WebSerial.printf("%s advantage: %.2f pawns\n", currentEvaluation > 0 ? "White" : "Black", currentEvaluation);
 
     int fromRow, fromCol, toRow, toCol;
     char promotion;
     if (ChessUtils::parseUCIMove(bestMove, fromRow, fromCol, toRow, toCol, promotion)) {
-      Serial.printf("Stockfish UCI move: %s = (%d,%d) -> (%d,%d)%s%c\n", bestMove.c_str(), fromRow, fromCol, toRow, toCol, promotion == ' ' ? "" : " Promotion to: ", promotion);
-      Serial.println("============================");
+      WebSerial.printf("Stockfish UCI move: %s = (%d,%d) -> (%d,%d)%s%c\n", bestMove.c_str(), fromRow, fromCol, toRow, toCol, promotion == ' ' ? "" : " Promotion to: ", promotion);
+      WebSerial.println("============================");
       // Verify the move is from the correct color piece
       char piece = board[fromRow][fromCol];
       bool botPlaysWhite = !botConfig.playerIsWhite;
       bool isBotPiece = (botPlaysWhite && piece >= 'A' && piece <= 'Z') || (!botPlaysWhite && piece >= 'a' && piece <= 'z');
       if (!isBotPiece) {
-        Serial.printf("ERROR: Bot tried to move a %s piece, but bot plays %s. Piece at source: %c\n", (piece >= 'A' && piece <= 'Z') ? "WHITE" : "BLACK", botPlaysWhite ? "WHITE" : "BLACK", piece);
+        WebSerial.printf("ERROR: Bot tried to move a %s piece, but bot plays %s. Piece at source: %c\n", (piece >= 'A' && piece <= 'Z') ? "WHITE" : "BLACK", botPlaysWhite ? "WHITE" : "BLACK", piece);
         return;
       }
       if (piece == ' ') {
-        Serial.println("ERROR: Bot tried to move from an empty square!");
+        WebSerial.println("ERROR: Bot tried to move from an empty square!");
         return;
       }
       applyMove(fromRow, fromCol, toRow, toCol, (bestMove.length() >= 5) ? bestMove[4] : ' ', true);
     } else {
-      Serial.println("Failed to parse Stockfish UCI move: " + bestMove);
+      WebSerial.println("Failed to parse Stockfish UCI move: " + bestMove);
     }
   }
 }
@@ -177,7 +178,7 @@ void ChessBot::waitForRemoteMoveCompletion(int fromRow, int fromCol, int toRow, 
   bool capturedPieceRemoved = false;
   bool moveCompleted = false;
 
-  Serial.println("Waiting for you to complete the remote move...");
+  WebSerial.println("Waiting for you to complete the remote move...");
 
   while (!moveCompleted) {
     boardDriver->readSensors();
@@ -189,16 +190,16 @@ void ChessBot::waitForRemoteMoveCompletion(int fromRow, int fromCol, int toRow, 
       if (!boardDriver->getSensorState(captureCheckRow, toCol)) {
         capturedPieceRemoved = true;
         if (isEnPassant)
-          Serial.println("En passant captured pawn removed, now complete the move...");
+          WebSerial.println("En passant captured pawn removed, now complete the move...");
         else
-          Serial.println("Captured piece removed, now complete the move...");
+          WebSerial.println("Captured piece removed, now complete the move...");
       }
     }
 
     // Check if piece was picked up from source
     if (!piecePickedUp && !boardDriver->getSensorState(fromRow, fromCol)) {
       piecePickedUp = true;
-      Serial.println("Piece picked up, now place it on the destination...");
+      WebSerial.println("Piece picked up, now place it on the destination...");
     }
 
     // Check if piece was placed on destination
@@ -207,7 +208,7 @@ void ChessBot::waitForRemoteMoveCompletion(int fromRow, int fromCol, int toRow, 
     if (piecePickedUp && boardDriver->getSensorState(toRow, toCol))
       if (!isCapture || (isCapture && capturedPieceRemoved)) {
         moveCompleted = true;
-        Serial.println("Move completed on physical board!");
+        WebSerial.println("Move completed on physical board!");
       }
 
     delay(SENSOR_READ_DELAY_MS);

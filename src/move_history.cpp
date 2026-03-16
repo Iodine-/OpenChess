@@ -1,3 +1,4 @@
+#include "web_serial.h"
 #include "move_history.h"
 #include "chess_game.h"
 #include "chess_utils.h"
@@ -116,7 +117,7 @@ void MoveHistory::enforceStorageLimits() {
   while ((int)ids.size() > MAX_GAMES) {
     LittleFS.remove(gamePath(ids.front()));
     ids.erase(ids.begin());
-    Serial.println("MoveHistory: deleted oldest game (max game limit)");
+    WebSerial.println("MoveHistory: deleted oldest game (max game limit)");
   }
 
   // 2. Enforce MAX_USAGE_PERCENT
@@ -127,7 +128,7 @@ void MoveHistory::enforceStorageLimits() {
       break;
     LittleFS.remove(gamePath(ids.front()));
     ids.erase(ids.begin());
-    Serial.println("MoveHistory: deleted oldest game (storage limit)");
+    WebSerial.println("MoveHistory: deleted oldest game (storage limit)");
   }
 }
 
@@ -155,7 +156,7 @@ void MoveHistory::startGame(uint8_t mode, uint8_t playerColor, uint8_t botDepth)
   if (ft) ft.close();
 
   recording = true;
-  Serial.println("MoveHistory: new live game started");
+  WebSerial.println("MoveHistory: new live game started");
 }
 
 void MoveHistory::addMove(int fromRow, int fromCol, int toRow, int toCol, char promotion) {
@@ -247,7 +248,7 @@ void MoveHistory::finishGame(uint8_t result, char winnerColor) {
   LittleFS.rename(LIVE_MOVES_PATH, dest.c_str());
   discardLiveGame();
 
-  Serial.printf("MoveHistory: game saved as %s (%d moves) (%d FEN entries)\n", dest.c_str(), header.moveCount, header.fenEntryCnt);
+  WebSerial.printf("MoveHistory: game saved as %s (%d moves) (%d FEN entries)\n", dest.c_str(), header.moveCount, header.fenEntryCnt);
 }
 
 bool MoveHistory::quietExists(const char* path) {
@@ -298,7 +299,7 @@ bool MoveHistory::replayIntoGame(ChessGame* game) {
     return false;
   }
   if (hdr.fenEntryCnt == 0) {
-    Serial.println("MoveHistory: no FEN in live game, cannot resume");
+    WebSerial.println("MoveHistory: no FEN in live game, cannot resume");
     fm.close();
     return false;
   }
@@ -333,7 +334,7 @@ bool MoveHistory::replayIntoGame(ChessGame* game) {
   }
 
   if (lastFen.isEmpty()) {
-    Serial.println("MoveHistory: failed to read last FEN");
+    WebSerial.println("MoveHistory: failed to read last FEN");
     return false;
   }
 
@@ -347,11 +348,11 @@ bool MoveHistory::replayIntoGame(ChessGame* game) {
   }
 
   if (lastFenIdx < 0) {
-    Serial.println("MoveHistory: FEN marker not found in moves");
+    WebSerial.println("MoveHistory: FEN marker not found in moves");
     return false;
   }
 
-  Serial.println("MoveHistory: resuming from FEN: " + lastFen);
+  WebSerial.println("MoveHistory: resuming from FEN: " + lastFen);
 
   // Set board state from last FEN
   recording = false;
@@ -371,7 +372,7 @@ bool MoveHistory::replayIntoGame(ChessGame* game) {
   header = hdr;
   recording = true;
 
-  Serial.printf("MoveHistory: replayed %d moves from last FEN marker, game resumed\n", (moves.size() - 1) - lastFenIdx);
+  WebSerial.printf("MoveHistory: replayed %d moves from last FEN marker, game resumed\n", (moves.size() - 1) - lastFenIdx);
   return true;
 }
 

@@ -1,3 +1,4 @@
+#include "web_serial.h"
 #include "chess_game.h"
 #include "chess_utils.h"
 #include "move_history.h"
@@ -51,7 +52,7 @@ void ChessGame::waitForBoardSetup(const char targetBoard[8][8], bool showFirewor
     return;
   }
 
-  Serial.println("Set up the board in the required position...");
+  WebSerial.println("Set up the board in the required position...");
   boardDriver->acquireLEDs();
   boardDriver->clearAllLEDs(false);
   while (!allCorrect) {
@@ -99,7 +100,7 @@ void ChessGame::waitForBoardSetup(const char targetBoard[8][8], bool showFirewor
   }
   boardDriver->releaseLEDs();
 
-  Serial.println("Board setup complete!");
+  WebSerial.println("Board setup complete!");
   if (showFirework)
     boardDriver->fireworkAnimation();
 }
@@ -127,7 +128,7 @@ void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char p
   board[toRow][toCol] = piece;
   board[fromRow][fromCol] = ' ';
 
-  Serial.printf("%s %s: %c %c%d -> %c%d\n", isRemoteMove ? "Remote" : "Player", isCastling ? "castling" : (isEnPassantCapture ? "en passant" : (capturedPiece != ' ' ? "capture" : "move")), piece, (char)('a' + fromCol), 8 - fromRow, (char)('a' + toCol), 8 - toRow);
+  WebSerial.printf("%s %s: %c %c%d -> %c%d\n", isRemoteMove ? "Remote" : "Player", isCastling ? "castling" : (isEnPassantCapture ? "en passant" : (capturedPiece != ' ' ? "capture" : "move")), piece, (char)('a' + fromCol), 8 - fromRow, (char)('a' + toCol), 8 - toRow);
 
   if (isRemoteMove && !isCastling && !replaying)
     waitForRemoteMoveCompletion(fromRow, fromCol, toRow, toCol, capturedPiece != ' ', isEnPassantCapture, enPassantCapturedPawnRow);
@@ -155,7 +156,7 @@ void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char p
       promotion = ChessUtils::isWhitePiece(piece) ? 'Q' : 'q';
     }
     board[toRow][toCol] = promotion;
-    Serial.printf("Pawn promoted to %c\n", promotion);
+    WebSerial.printf("Pawn promoted to %c\n", promotion);
   }
 
   if (moveHistory && moveHistory->isRecording())
@@ -177,12 +178,12 @@ bool ChessGame::tryPlayerMove(char playerColor, int& fromRow, int& fromCol, int&
 
       // Check if it's the correct player's piece
       if (ChessUtils::getPieceColor(piece) != playerColor) {
-        Serial.printf("Wrong turn! It's %s's turn to move.\n", ChessUtils::colorName(playerColor));
+        WebSerial.printf("Wrong turn! It's %s's turn to move.\n", ChessUtils::colorName(playerColor));
         boardDriver->blinkSquare(row, col, LedColors::Red, 2);
         continue;
       }
 
-      Serial.printf("Piece pickup from %c%d\n", (char)('a' + col), 8 - row);
+      WebSerial.printf("Piece pickup from %c%d\n", (char)('a' + col), 8 - row);
 
       // Generate possible moves
       int moveCount = 0;
@@ -259,7 +260,7 @@ bool ChessGame::tryPlayerMove(char playerColor, int& fromRow, int& fromCol, int&
                 return !boardDriver->getSensorState(r2, c2);
             };
             if ((board[r2][c2] != ' ' || isEnPassantCapture) && isCapturedPiecePickedUp()) {
-              Serial.printf("Capture initiated at %c%d\n", (char)('a' + c2), 8 - r2);
+              WebSerial.printf("Capture initiated at %c%d\n", (char)('a' + c2), 8 - r2);
               // Store the target square and wait for the capturing piece to be placed there
               targetRow = r2;
               targetCol = c2;
@@ -273,7 +274,7 @@ bool ChessGame::tryPlayerMove(char playerColor, int& fromRow, int& fromCol, int&
                 boardDriver->readSensors();
                 // Allow cancellation by placing the piece back to its original position
                 if (boardDriver->getSensorState(row, col)) {
-                  Serial.println("Capture cancelled");
+                  WebSerial.println("Capture cancelled");
                   targetRow = row;
                   targetCol = col;
                   break;
@@ -297,7 +298,7 @@ bool ChessGame::tryPlayerMove(char playerColor, int& fromRow, int& fromCol, int&
       }
 
       if (targetRow == row && targetCol == col) {
-        Serial.println("Pickup cancelled");
+        WebSerial.println("Pickup cancelled");
         boardDriver->clearAllLEDs();
         return false;
       }
@@ -310,7 +311,7 @@ bool ChessGame::tryPlayerMove(char playerColor, int& fromRow, int& fromCol, int&
         }
 
       if (!legalMove) {
-        Serial.println("Illegal move, reverting");
+        WebSerial.println("Illegal move, reverting");
         boardDriver->clearAllLEDs();
         return false;
       }
@@ -338,7 +339,7 @@ void ChessGame::updateGameStatus() {
 
   if (chessEngine->isCheckmate(board, currentTurn)) {
     char winnerColor = (currentTurn == 'w') ? 'b' : 'w';
-    Serial.printf("CHECKMATE! %s wins!\n", ChessUtils::colorName(winnerColor));
+    WebSerial.printf("CHECKMATE! %s wins!\n", ChessUtils::colorName(winnerColor));
     boardDriver->fireworkAnimation(ChessUtils::colorLed(winnerColor));
     gameOver = true;
     if (moveHistory) moveHistory->finishGame(RESULT_CHECKMATE, winnerColor);
@@ -346,7 +347,7 @@ void ChessGame::updateGameStatus() {
   }
 
   if (chessEngine->isStalemate(board, currentTurn)) {
-    Serial.println("STALEMATE! Game is a draw.");
+    WebSerial.println("STALEMATE! Game is a draw.");
     boardDriver->fireworkAnimation(LedColors::Cyan);
     gameOver = true;
     if (moveHistory) moveHistory->finishGame(RESULT_STALEMATE, 'd');
@@ -354,7 +355,7 @@ void ChessGame::updateGameStatus() {
   }
 
   if (chessEngine->isFiftyMoveRule()) {
-    Serial.println("DRAW by 50-move rule! No captures or pawn moves in the last 50 moves.");
+    WebSerial.println("DRAW by 50-move rule! No captures or pawn moves in the last 50 moves.");
     boardDriver->fireworkAnimation(LedColors::Cyan);
     gameOver = true;
     if (moveHistory) moveHistory->finishGame(RESULT_DRAW_50, 'd');
@@ -362,7 +363,7 @@ void ChessGame::updateGameStatus() {
   }
 
   if (chessEngine->isThreefoldRepetition()) {
-    Serial.println("DRAW by threefold repetition! Same position occurred 3 times.");
+    WebSerial.println("DRAW by threefold repetition! Same position occurred 3 times.");
     boardDriver->fireworkAnimation(LedColors::Cyan);
     gameOver = true;
     if (moveHistory) moveHistory->finishGame(RESULT_DRAW_3FOLD, 'd');
@@ -370,7 +371,7 @@ void ChessGame::updateGameStatus() {
   }
 
   if (chessEngine->isInsufficientMaterial(board)) {
-    Serial.println("DRAW by insufficient material! Neither side can checkmate.");
+    WebSerial.println("DRAW by insufficient material! Neither side can checkmate.");
     boardDriver->fireworkAnimation(LedColors::Cyan);
     gameOver = true;
     if (moveHistory) moveHistory->finishGame(RESULT_DRAW_INSUFFICIENT, 'd');
@@ -378,7 +379,7 @@ void ChessGame::updateGameStatus() {
   }
 
   if (chessEngine->isKingInCheck(board, currentTurn)) {
-    Serial.printf("%s is in CHECK!\n", ChessUtils::colorName(currentTurn));
+    WebSerial.printf("%s is in CHECK!\n", ChessUtils::colorName(currentTurn));
     boardDriver->clearAllLEDs(false);
 
     int kingRow = -1;
@@ -387,7 +388,7 @@ void ChessGame::updateGameStatus() {
       boardDriver->blinkSquare(kingRow, kingCol, LedColors::Yellow);
   }
 
-  Serial.printf("It's %s's turn !\n", ChessUtils::colorName(currentTurn));
+  WebSerial.printf("It's %s's turn !\n", ChessUtils::colorName(currentTurn));
 
   // Verify the physical board matches the expected state after each turn
   if (!replaying)
@@ -400,7 +401,7 @@ void ChessGame::setBoardStateFromFEN(const String& fen) {
   if (moveHistory && moveHistory->isRecording())
     moveHistory->addFen(fen);
   wifiManager->updateBoardState(ChessUtils::boardToFEN(board, currentTurn, chessEngine), ChessUtils::evaluatePosition(board));
-  Serial.println("Board state set from FEN: " + fen);
+  WebSerial.println("Board state set from FEN: " + fen);
   ChessUtils::printBoard(board);
   // Guide the user to set up the physical board to match the new position
   if (!replaying)
@@ -415,7 +416,7 @@ char ChessGame::waitForPromotionChoice(char piece) {
   unsigned long promotionStart = millis();
   while (wifiManager->isPromotionPending() && wifiManager->getPromotionChoice() == ' ') {
     if (millis() - promotionStart >= PROMOTION_TIMEOUT_MS) {
-      Serial.println("Promotion timeout - defaulting to queen");
+      WebSerial.println("Promotion timeout - defaulting to queen");
       break;
     }
     delay(25);
@@ -433,7 +434,7 @@ char ChessGame::waitForPromotionChoice(char piece) {
 void ChessGame::resignGame(char resigningColor) {
   if (gameOver) return;
   char winnerColor = (resigningColor == 'w') ? 'b' : 'w';
-  Serial.printf("RESIGNATION! %s resigns. %s wins!\n", ChessUtils::colorName(resigningColor), ChessUtils::colorName(winnerColor));
+  WebSerial.printf("RESIGNATION! %s resigns. %s wins!\n", ChessUtils::colorName(resigningColor), ChessUtils::colorName(winnerColor));
   boardDriver->fireworkAnimation(ChessUtils::colorLed(winnerColor));
   gameOver = true;
   if (moveHistory) moveHistory->finishGame(RESULT_RESIGNATION, winnerColor);
@@ -441,7 +442,7 @@ void ChessGame::resignGame(char resigningColor) {
 
 void ChessGame::drawGame() {
   if (gameOver) return;
-  Serial.println("DRAW by mutual agreement!");
+  WebSerial.println("DRAW by mutual agreement!");
   boardDriver->fireworkAnimation(LedColors::Cyan);
   gameOver = true;
   if (moveHistory) moveHistory->finishGame(RESULT_DRAW_AGREEMENT, 'd');
@@ -457,7 +458,7 @@ bool ChessGame::checkPhysicalResignOrDraw() {
   if (boardDriver->getSensorState(wKingRow, wKingCol) || boardDriver->getSensorState(bKingRow, bKingCol))
     return false;
 
-  Serial.println("Both kings lifted! Confirming draw gesture...");
+  WebSerial.println("Both kings lifted! Confirming draw gesture...");
 
   // Temporarily stop any running animation to free the LED mutex
   bool hadAnimation = (stopAnimation != nullptr);
@@ -482,7 +483,7 @@ bool ChessGame::checkPhysicalResignOrDraw() {
       boardDriver->releaseLEDs();
       if (hadAnimation)
         stopAnimation = boardDriver->startThinkingAnimation();
-      Serial.println("Draw gesture aborted (a king was placed back)");
+      WebSerial.println("Draw gesture aborted (a king was placed back)");
       return false;
     }
 
@@ -560,7 +561,7 @@ void ChessGame::applyCastling(int kingFromRow, int kingFromCol, int kingToRow, i
 
   if (waitForKingCompletion) {
     // Handle LED prompts and wait for king move
-    Serial.printf("Castling: please move king from %c%d to %c%d\n", (char)('a' + kingFromCol), 8 - kingFromRow, (char)('a' + kingToCol), 8 - kingToRow);
+    WebSerial.printf("Castling: please move king from %c%d to %c%d\n", (char)('a' + kingFromCol), 8 - kingFromRow, (char)('a' + kingToCol), 8 - kingToRow);
 
     boardDriver->clearAllLEDs(false);
     boardDriver->setSquareLED(kingFromRow, kingFromCol, LedColors::Cyan);
@@ -587,7 +588,7 @@ void ChessGame::applyCastling(int kingFromRow, int kingFromCol, int kingToRow, i
   }
 
   // Handle LED prompts and wait for rook move
-  Serial.printf("Castling: please move rook from %c%d to %c%d\n", (char)('a' + rookFromCol), 8 - kingToRow, (char)('a' + rookToCol), 8 - kingToRow);
+  WebSerial.printf("Castling: please move rook from %c%d to %c%d\n", (char)('a' + rookFromCol), 8 - kingToRow, (char)('a' + rookToCol), 8 - kingToRow);
 
   // Wait for rook to be lifted from its original square
   boardDriver->clearAllLEDs(false);
