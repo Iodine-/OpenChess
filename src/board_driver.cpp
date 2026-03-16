@@ -694,6 +694,9 @@ void BoardDriver::showLEDs() {
 
 void BoardDriver::showConnectingAnimation() {
   acquireLEDs();
+  // Save current LED state
+  LedRGB savedColors[NUM_ROWS][NUM_COLS];
+  memcpy(savedColors, currentColors, sizeof(currentColors));
   // Show each WiFi connection attempt with animated LEDs
   for (int i = 0; i < 8; i++) {
     setSquareLED(3, i, LedColors::Blue);
@@ -701,7 +704,11 @@ void BoardDriver::showConnectingAnimation() {
     showLEDs();
     delay(125);
   }
-  clearAllLEDs();
+  // Restore previous LED state
+  for (int r = 0; r < NUM_ROWS; r++)
+    for (int c = 0; c < NUM_COLS; c++)
+      setSquareLED(r, c, savedColors[r][c]);
+  showLEDs();
   releaseLEDs();
 }
 

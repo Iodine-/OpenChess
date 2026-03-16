@@ -6,6 +6,7 @@
 #include "stockfish_settings.h"
 #include <Arduino.h>
 #include <AsyncTCP.h>
+#include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
 #include <LittleFS.h>
@@ -21,16 +22,34 @@ class MoveHistory;
 // ---------------------------
 #define AP_SSID "OpenChess"
 #define AP_PASSWORD "chess123"
-// Your WiFi Network Credentials for internet connection (can also be set via web interface)
-#define SECRET_SSID "YOUR_SSID"
-#define SECRET_PASS "YOUR_PASSWORD"
-// Set to 1 if the same SSID is available on multiple channels. Will scan all channels and sort by signal strength.
-// Will take longer to connect but helps find the AP with best signal in a mesh network.
-// Don't enable unless you have multiple APs with the same SSID on different channels, otherwise it just adds unnecessary delay (around +10 seconds) to WiFi connection.
-#define WIFI_SCAN_ALL_CHANNELS 0
-
 #define HTTP_PORT 80
 #define MDNS_HOSTNAME "openchess"
+#define MAX_WIFI_PROFILES 3
+#define NVS_WIFI_NAMESPACE "wifiProfiles"
+
+// ---------------------------
+// WiFi Profile (saved network)
+// ---------------------------
+struct WiFiProfile {
+  String ssid;
+  String password;
+  uint8_t bssid[6]; // MAC address for fast reconnect
+  uint8_t channel;  // Channel for fast reconnect
+  bool hasBssid;    // Whether bssid/channel are valid cached values
+
+  WiFiProfile() : channel(0), hasBssid(false) { memset(bssid, 0, sizeof(bssid)); }
+};
+
+// ---------------------------
+// Scanned network info (sent to frontend)
+// ---------------------------
+struct ScannedNetwork {
+  String ssid;
+  int32_t rssi;
+  uint8_t bssid[6];
+  uint8_t channel;
+  uint8_t encryptionType; // wifi_auth_mode_t cast to uint8_t
+};
 
 // ---------------------------
 // WiFi Manager Class for ESP32
@@ -38,15 +57,30 @@ class MoveHistory;
 class WiFiManagerESP32 {
  private:
   AsyncWebServer server;
+  DNSServer dnsServer;
+
+  TaskHandle_t pendingWiFiTaskHandle = nullptr;
+  static void pendingWiFiBackgroundTask(void* param);
+  TaskHandle_t dnsTaskHandle = nullptr;
+  static void dnsTask(void* param);
+  void startCaptivePortal();
+  void stopCaptivePortal();
 
   Preferences prefs;
-  String wifiSSID;
-  String wifiPassword;
   String gameMode;
   String lichessToken;
 
-  BotConfig botConfig = {StockfishSettings::medium(), true};
+  // Saved WiFi profiles (up to MAX_WIFI_PROFILES, index 0 = most recently connected)
+  WiFiProfile profiles[MAX_WIFI_PROFILES];
+  int profileCount;
   bool scanAllChannels;
+  int connectedProfileIndex; // Index of currently connected profile, or -1
+
+  // Scan results (populated by deferred scan task)
+  ScannedNetwork* scanResults;
+  int scanResultCount;
+
+  BotConfig botConfig = {StockfishSettings::medium(), true};
 
   MoveHistory* moveHistory;
   BoardDriver* boardDriver;
@@ -78,10 +112,44 @@ class WiFiManagerESP32 {
   // Web client heartbeat (tracks whether board.html is actively polling)
   unsigned long lastBoardPollTime; // millis() of last /board-update GET request
 
-  // Deferred WiFi reconnection (set by web handler, processed in main loop)
-  String pendingWiFiSSID;
-  String pendingWiFiPassword;
-  volatile bool hasPendingWiFi;
+  // Deferred WiFi actions (set by web handler, processed by worker task)
+  enum PendingAction {
+    NONE,
+    CONNECT_SAVED,
+    CONNECT_NEW,
+    DELETE_PROFILE,
+    SCAN_NETWORKS
+  };
+  struct PendingWiFi {
+    volatile PendingAction action;
+    int profileIndex;    // For CONNECT_SAVED / DELETE_PROFILE
+    String newSSID;      // For CONNECT_NEW
+    String newPassword;  // For CONNECT_NEW
+    uint8_t newBssid[6]; // For CONNECT_NEW (from scan)
+    uint8_t newChannel;  // For CONNECT_NEW (from scan)
+    void reset() {
+      action = NONE;
+      profileIndex = -1;
+      newSSID = "";
+      newPassword = "";
+      memset(newBssid, 0, 6);
+      newChannel = 0;
+    }
+  };
+  PendingWiFi pendingWiFi;
+
+  // NVS persistence for WiFi profiles
+  void loadProfiles();
+  void saveProfiles(bool saveAllProfiles = true);
+  void promoteProfile(int index);
+
+  // WiFi connection helpers
+  bool waitForConnection(int maxAttempts);
+  bool tryConnect(const String& ssid, const String& password, const uint8_t* bssid = nullptr, uint8_t channel = 0);
+  bool tryConnectProfile(int index);
+  bool connectToSavedProfile(); // Try all saved profiles, promote winner; returns true if connected
+  void startAPFallback();
+  void performScan();
 
   // Web interface methods
   String getWiFiInfoJSON();
@@ -117,6 +185,7 @@ class WiFiManagerESP32 {
   // OTA state
   OtaUpdater otaUpdater;
   OtaUpdateInfo lastUpdateInfo;
+  bool otaChecked;
   bool autoOtaEnabled;
   // Temporary file for web asset TAR upload (needed because the TAR parser requires a seekable Stream)
   File otaTarFile;
@@ -129,9 +198,6 @@ class WiFiManagerESP32 {
   OtaUpdater& getOtaUpdater() { return otaUpdater; }
   bool isAutoOtaEnabled() const { return autoOtaEnabled; }
 
-  // Configuration getters
-  String getWiFiSSID() { return wifiSSID; }
-  String getWiFiPassword() { return wifiPassword; }
   // Game selection via web
   int getSelectedGameMode() const { return gameMode.toInt(); }
   void resetGameSelection() { gameMode = "0"; };
@@ -159,9 +225,9 @@ class WiFiManagerESP32 {
   void clearPromotion();
   // Web client connection check
   bool isWebClientConnected() const;
-  // WiFi connection management
-  bool connectToWiFi(const String& ssid, const String& password, bool fromWeb = false);
-  // Call from main loop to process deferred WiFi reconnection
+  // Check if WiFi is connected (re-attempts if not)
+  bool ensureConnected();
+  // Processes deferred WiFi actions (called by pendingWiFiBackgroundTask)
   void checkPendingWiFi();
 };
 

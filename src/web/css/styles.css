@@ -125,6 +125,94 @@ input[type="submit"],
     margin-top: 10px;
 }
 
+/* WiFi network lists */
+.network-list {
+    max-height: 170px;
+    overflow-y: auto;
+    background-color: #444;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+.network-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid #555;
+}
+
+.network-item:last-child {
+    border-bottom: none;
+}
+
+.network-info {
+    flex: 1;
+    min-width: 0;
+    margin-right: 8px;
+}
+
+.network-ssid {
+    color: #fff;
+    font-size: 14px;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.network-detail {
+    color: #999;
+    font-size: 11px;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* RSSI signal strength bars */
+.rssi-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 18px;
+    vertical-align: middle;
+}
+
+.rssi-bar {
+    width: 4px;
+    border-radius: 1px;
+    background: #555;
+}
+
+.network-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.net-btn {
+    border: none;
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    color: #fff;
+    transition: filter 0.2s ease;
+}
+
+.net-btn:hover {
+    filter: brightness(1.2);
+}
+
+.net-btn-connect {
+    background-color: #4CAF50;
+}
+
+.net-btn-delete {
+    background-color: #e74c3c;
+}
+
 input[type="submit"]:hover,
 .button:hover {
     filter: brightness(1.15);
@@ -1272,31 +1360,36 @@ input[type="submit"]:hover,
 
 /* Themed scrollbar for review moves and game selector */
 .review-moves::-webkit-scrollbar,
-.game-selector-grid::-webkit-scrollbar {
+.game-selector-grid::-webkit-scrollbar,
+.network-list::-webkit-scrollbar {
     width: 8px;
 }
 
 .review-moves::-webkit-scrollbar-track,
-.game-selector-grid::-webkit-scrollbar-track {
+.game-selector-grid::-webkit-scrollbar-track,
+.network-list::-webkit-scrollbar-track {
     background: #2a2a2a;
     border-radius: 4px;
 }
 
 .review-moves::-webkit-scrollbar-thumb,
-.game-selector-grid::-webkit-scrollbar-thumb {
+.game-selector-grid::-webkit-scrollbar-thumb,
+.network-list::-webkit-scrollbar-thumb {
     background-color: #555;
     border-radius: 4px;
     border: 2px solid #2a2a2a;
 }
 
 .review-moves::-webkit-scrollbar-thumb:hover,
-.game-selector-grid::-webkit-scrollbar-thumb:hover {
+.game-selector-grid::-webkit-scrollbar-thumb:hover,
+.network-list::-webkit-scrollbar-thumb:hover {
     background-color: #ec8703;
 }
 
 /* Firefox scrollbar theming */
 .review-moves,
-.game-selector-grid {
+.game-selector-grid,
+.network-list {
     scrollbar-width: thin;
     scrollbar-color: #555 #2a2a2a;
 }

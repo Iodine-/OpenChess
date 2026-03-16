@@ -14,7 +14,7 @@ void ChessBot::begin() {
   Serial.printf("Bot plays: %s\n", botConfig.playerIsWhite ? "Black" : "White");
   Serial.printf("Bot Difficulty: Depth %d, Timeout %dms\n", botConfig.stockfishSettings.depth, botConfig.stockfishSettings.timeoutMs);
   Serial.println("====================================");
-  if (wifiManager->connectToWiFi(wifiManager->getWiFiSSID(), wifiManager->getWiFiPassword())) {
+  if (wifiManager->ensureConnected()) {
     initializeBoard();
     if (moveHistory->hasLiveGame()) {
       Serial.println("Resuming live bot game...");

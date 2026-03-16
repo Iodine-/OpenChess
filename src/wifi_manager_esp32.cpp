@@ -7,63 +7,80 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <Update.h>
+#include <esp_wifi.h>
 
 static const char* INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+// Samsung captive portal detection is more reliable when SoftAP is not in RFC1918 ranges.
+static const IPAddress AP_IP(200, 200, 200, 1);
+static const IPAddress AP_GATEWAY(200, 200, 200, 1);
+static const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), wifiSSID(SECRET_SSID), wifiPassword(SECRET_PASS), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(WIFI_SCAN_ALL_CHANNELS), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), hasPendingWiFi(false), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false) {
+WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(false), profileCount(0), connectedProfileIndex(-1), scanResults(nullptr), scanResultCount(0), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false), otaChecked(false) {
   promotion.reset();
+  pendingWiFi.reset();
 }
 
 void WiFiManagerESP32::begin() {
   Serial.println("=== Starting OpenChess WiFi Manager ===");
 
-  if (!ChessUtils::ensureNvsInitialized()) {
-    Serial.println("NVS init failed - WiFi credentials not loaded");
-  } else {
-    prefs.begin("wifiCreds", false);
-    if (prefs.isKey("ssid")) {
-      wifiSSID = prefs.getString("ssid", SECRET_SSID);
-      wifiPassword = prefs.getString("pass", SECRET_PASS);
-    }
-    scanAllChannels = prefs.getBool("scanAll", WIFI_SCAN_ALL_CHANNELS);
-    prefs.end();
-
+  if (ChessUtils::ensureNvsInitialized()) {
+    // Load WiFi profiles
+    loadProfiles();
     // Load Lichess token
     prefs.begin("lichess", false);
-    if (prefs.isKey("token")) {
+    if (prefs.isKey("token"))
       lichessToken = prefs.getString("token", "");
-    }
     prefs.end();
-    if (lichessToken.length() > 0) {
+    if (lichessToken.length() > 0)
       Serial.println("Lichess API token loaded from NVS");
-    }
-
     // Load OTA auto-update preference
     prefs.begin("ota", false);
     autoOtaEnabled = prefs.getBool("autoUpdate", false);
     prefs.end();
   }
-  bool connected = connectToWiFi(wifiSSID, wifiPassword);
+
+  bool connected = connectToSavedProfile();
   Serial.println("==== WiFi Connection Information ====");
   if (connected) {
-    Serial.println("Connected to WiFi network: ");
-    Serial.println("- SSID: " + wifiSSID);
-    Serial.println("- Password: " + wifiPassword);
+    Serial.println("Connected to WiFi network:");
+    Serial.println("- SSID: " + profiles[0].ssid);
+    Serial.println("- Password: " + profiles[0].password);
     Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.localIP().toString() + ")");
   } else {
+    startAPFallback();
     Serial.println("A WiFi Access Point was created:");
     Serial.println("- SSID: " AP_SSID);
     Serial.println("- Password: " AP_PASSWORD);
     Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.softAPIP().toString() + ")");
     Serial.println("- MAC Address: " + WiFi.softAPmacAddress());
-    Serial.println("Configure WiFi credentials from the web interface to join your WiFi network (Stockfish needs internet)");
+    Serial.println("Configure WiFi credentials from WebUI to join your WiFi network");
   }
   Serial.println("=====================================\n");
 
   if (autoOtaEnabled && lastUpdateInfo.available)
     otaUpdater.applyUpdate(lastUpdateInfo);
 
-  // Set up web server routes with async handlers
+  auto sendCaptiveRedirect = [this](AsyncWebServerRequest* request) {
+    AsyncWebServerResponse* response = request->beginResponse(302);
+    response->addHeader("Location", "http://" + WiFi.softAPIP().toString() + "/");
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response->addHeader("Pragma", "no-cache");
+    response->addHeader("Expires", "0");
+    request->send(response);
+  };
+  // Captive portal detection endpoints
+  // References: https://github.com/tonyp7/esp32-wifi-manager/issues/57 https://github.com/tripflex/captive-portal/blob/master/src/mgos_captive_portal.c#L369-L375
+  // Android/Samsung
+  server.on("/mobile/status.php", HTTP_GET, [sendCaptiveRedirect](AsyncWebServerRequest* request) { sendCaptiveRedirect(request); });
+  server.on("/generate_204", HTTP_GET, [sendCaptiveRedirect](AsyncWebServerRequest* request) { sendCaptiveRedirect(request); });
+  server.on("/gen_204", HTTP_GET, [sendCaptiveRedirect](AsyncWebServerRequest* request) { sendCaptiveRedirect(request); });
+  // Windows
+  server.on("/ncsi.txt", HTTP_GET, [sendCaptiveRedirect](AsyncWebServerRequest* request) { sendCaptiveRedirect(request); });
+  // Firefox/OSX
+  server.on("/success.txt", HTTP_GET, [sendCaptiveRedirect](AsyncWebServerRequest* request) { sendCaptiveRedirect(request); });
+  // Apple
+  server.on("/hotspot-detect.html", HTTP_GET, [sendCaptiveRedirect](AsyncWebServerRequest* request) { sendCaptiveRedirect(request); });
+  // Set up OpenChess web server routes
   server.on("/board-update", HTTP_GET, [this](AsyncWebServerRequest* request) { request->send(200, "application/json", this->getBoardUpdateJSON()); });
   server.on("/board-update", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleBoardEditSuccess(request); });
   server.on("/promotion", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handlePromotion(request); });
@@ -79,12 +96,13 @@ void WiFiManagerESP32::begin() {
   server.on("/board-calibrate", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleBoardCalibration(request); });
   server.on("/games", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleGamesRequest(request); });
   server.on("/games", HTTP_DELETE, [this](AsyncWebServerRequest* request) { this->handleDeleteGame(request); });
+  server.on("/hardware-config", HTTP_GET, [this](AsyncWebServerRequest* request) { this->getHardwareConfigJSON(request); });
+  server.on("/hardware-config", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleHardwareConfig(request); });
   // OTA update endpoints
   server.on("/ota/status", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleOtaStatus(request); });
   server.on("/ota/settings", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleOtaSettings(request); });
   server.on("/ota/apply", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleOtaApply(request); });
-  // OTA manual upload endpoints — JS sends raw binary body (application/octet-stream),
-  // so only the body handler (3rd callback) fires; the multipart file handler (2nd) is unused.
+  // OTA manual upload endpoints - JS sends raw binary body (application/octet-stream), so only the body handler (3rd callback) fires; the multipart file handler (2nd) is unused.
   server.on(
       "/ota/upload/firmware", HTTP_POST,
       [](AsyncWebServerRequest* request) {},
@@ -95,9 +113,6 @@ void WiFiManagerESP32::begin() {
       [](AsyncWebServerRequest* request) {},
       NULL,
       [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) { this->onWebAssetsUploadBody(request, data, len, index, total); });
-  // Hardware configuration endpoints
-  server.on("/hardware-config", HTTP_GET, [this](AsyncWebServerRequest* request) { this->getHardwareConfigJSON(request); });
-  server.on("/hardware-config", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleHardwareConfig(request); });
   // Serve sound files directly (no gzip variant exists, avoids .gz probe errors)
   server.serveStatic("/sounds/", LittleFS, "/sounds/").setTryGzipFirst(false);
   // Serve piece SVGs with aggressive caching, otherwise chrome doesn't actually use the cached versions
@@ -107,6 +122,8 @@ void WiFiManagerESP32::begin() {
   server.onNotFound([](AsyncWebServerRequest* request) { request->send(404, "text/plain", "Not Found"); });
   server.begin();
   Serial.println("Web server started on port: " + String(HTTP_PORT));
+
+  xTaskCreate(pendingWiFiBackgroundTask, "WiFi_Pending_Task", 4096, this, 4, &pendingWiFiTaskHandle);
 }
 
 String WiFiManagerESP32::getBoardUpdateJSON() {
@@ -126,13 +143,63 @@ String WiFiManagerESP32::getBoardUpdateJSON() {
 String WiFiManagerESP32::getWiFiInfoJSON() {
   bool connected = (WiFi.status() == WL_CONNECTED);
   JsonDocument doc;
-  doc["ssid"] = wifiSSID;
-  doc["password"] = wifiPassword;
-  doc["connected"] = connected ? "true" : "false";
-  doc["ap_ssid"] = AP_SSID;
-  doc["ap_ip"] = connected ? "" : WiFi.softAPIP().toString();
-  doc["local_ip"] = connected ? WiFi.localIP().toString() : "";
+  doc["connected"] = connected;
   doc["scanAllChannels"] = scanAllChannels;
+  doc["connectedIndex"] = connectedProfileIndex;
+
+  // Saved networks (never include passwords)
+  JsonArray saved = doc["saved"].to<JsonArray>();
+  for (int i = 0; i < profileCount; i++) {
+    JsonObject net = saved.add<JsonObject>();
+    net["ssid"] = profiles[i].ssid;
+    net["channel"] = profiles[i].channel;
+
+    bool found = false;
+    // Add RSSI from scan results if available
+    for (int j = 0; j < scanResultCount; j++) {
+      if (scanResults[j].ssid == profiles[i].ssid) {
+        net["rssi"] = scanResults[j].rssi;
+        net["enc"] = scanResults[j].encryptionType;
+        found = true;
+        break;
+      }
+    }
+    // For the connected profile, use live WiFi info if scan didn't cover it
+    wifi_ap_record_t apInfo;
+    if (!found && connected && i == connectedProfileIndex && esp_wifi_sta_get_ap_info(&apInfo) == ESP_OK) {
+      net["rssi"] = apInfo.rssi;
+      net["enc"] = (uint8_t)apInfo.authmode;
+    }
+  }
+
+  // Scanned networks (filter out already-saved SSIDs)
+  JsonArray scanned = doc["scanned"].to<JsonArray>();
+  for (int i = 0; i < scanResultCount; i++) {
+    bool alreadySaved = false;
+    for (int j = 0; j < profileCount; j++) {
+      if (scanResults[i].ssid == profiles[j].ssid) {
+        alreadySaved = true;
+        break;
+      }
+    }
+    if (alreadySaved || scanResults[i].ssid.length() == 0) continue;
+    // Deduplicate: skip if this SSID was already added (multiple APs with same SSID)
+    bool duplicate = false;
+    for (int k = 0; k < i; k++) {
+      if (scanResults[k].ssid == scanResults[i].ssid) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (duplicate) continue;
+
+    JsonObject net = scanned.add<JsonObject>();
+    net["ssid"] = scanResults[i].ssid;
+    net["rssi"] = scanResults[i].rssi;
+    net["channel"] = scanResults[i].channel;
+    net["enc"] = scanResults[i].encryptionType;
+  }
+
   String output;
   serializeJson(doc, output);
   return output;
@@ -173,45 +240,78 @@ void WiFiManagerESP32::handleDraw(AsyncWebServerRequest* request) {
 }
 
 void WiFiManagerESP32::handleConnectWiFi(AsyncWebServerRequest* request) {
-  bool changed = false;
-  String newWifiSSID = "";
-  String newWifiPassword = "";
-  if (request->hasArg("ssid"))
-    newWifiSSID = request->arg("ssid");
-  if (request->hasArg("password"))
-    newWifiPassword = request->arg("password");
-
+  // Handle scanAllChannels toggle
   if (request->hasArg("scanAllChannels")) {
     bool newScanAll = request->arg("scanAllChannels") == "1";
     if (newScanAll != scanAllChannels) {
-      if (ChessUtils::ensureNvsInitialized()) {
-        prefs.begin("wifiCreds", false);
-        prefs.putBool("scanAll", newScanAll);
-        prefs.end();
-        scanAllChannels = newScanAll;
-        Serial.printf("WiFi scan all channels: %s\n", scanAllChannels ? "enabled" : "disabled");
-        changed = true;
+      scanAllChannels = newScanAll;
+      saveProfiles(false);
+      Serial.printf("WiFi scan all channels: %s\n", scanAllChannels ? "enabled" : "disabled");
+    }
+    // If only the toggle was sent, respond OK
+    if (!request->hasArg("action")) {
+      request->send(200, "text/plain", "OK");
+      return;
+    }
+  }
+
+  String action = request->arg("action");
+
+  // action=scan - request a WiFi scan (deferred to main loop)
+  if (action == "scan") {
+    pendingWiFi.action = SCAN_NETWORKS;
+    request->send(200, "text/plain", "OK");
+    return;
+  }
+
+  // action=delete&index=N - delete a saved profile
+  if (action == "delete" && request->hasArg("index")) {
+    int idx = request->arg("index").toInt();
+    if (idx < 0 || idx >= profileCount) {
+      request->send(400, "text/plain", "Invalid index");
+      return;
+    }
+    pendingWiFi.action = DELETE_PROFILE;
+    pendingWiFi.profileIndex = idx;
+    request->send(200, "text/plain", "OK");
+    return;
+  }
+
+  // action=connect&index=N - connect to a saved profile (deferred)
+  if (action == "connect" && request->hasArg("index")) {
+    int idx = request->arg("index").toInt();
+    if (idx < 0 || idx >= profileCount) {
+      request->send(400, "text/plain", "Invalid index");
+      return;
+    }
+    pendingWiFi.action = CONNECT_SAVED;
+    pendingWiFi.profileIndex = idx;
+    request->send(200, "text/plain", "OK");
+    return;
+  }
+
+  // action=connect with ssid (and optional password) - connect to a new/scanned network (deferred)
+  if (action == "connect" && request->hasArg("ssid")) {
+    pendingWiFi.newSSID = request->arg("ssid");
+    pendingWiFi.newPassword = request->hasArg("password") ? request->arg("password") : "";
+    pendingWiFi.newChannel = 0;
+    memset(pendingWiFi.newBssid, 0, 6);
+
+    // Look up BSSID and channel from scan results for faster initial connect
+    for (int i = 0; i < scanResultCount; i++) {
+      if (scanResults[i].ssid == pendingWiFi.newSSID) {
+        pendingWiFi.newChannel = scanResults[i].channel;
+        memcpy(pendingWiFi.newBssid, scanResults[i].bssid, 6);
+        break;
       }
     }
-  }
 
-  if (newWifiSSID.length() >= 1 && newWifiPassword.length() >= 5) {
-    bool credsChanged = (newWifiSSID != wifiSSID || newWifiPassword != wifiPassword);
-    bool notConnected = (WiFi.status() != WL_CONNECTED);
-    if (credsChanged || notConnected) {
-      // Defer WiFi reconnection to the main loop to avoid blocking the async_tcp
-      // task, which would trigger the ESP32 task watchdog (WDT).
-      pendingWiFiSSID = newWifiSSID;
-      pendingWiFiPassword = newWifiPassword;
-      hasPendingWiFi = true;
-      changed = true;
-    }
-  }
-
-  if (changed)
+    pendingWiFi.action = CONNECT_NEW;
     request->send(200, "text/plain", "OK");
-  else
-    request->send(400, "text/plain", "ERROR");
+    return;
+  }
+
+  request->send(400, "text/plain", "Missing or invalid parameters");
 }
 
 void WiFiManagerESP32::handleGameSelection(AsyncWebServerRequest* request) {
@@ -490,66 +590,118 @@ bool WiFiManagerESP32::isWebClientConnected() const {
 }
 
 void WiFiManagerESP32::checkPendingWiFi() {
-  if (!hasPendingWiFi)
-    return;
-  hasPendingWiFi = false;
-  String newSSID = pendingWiFiSSID;
-  String newPass = pendingWiFiPassword;
-  if (connectToWiFi(newSSID, newPass, true)) {
-    if (!ChessUtils::ensureNvsInitialized())
-      Serial.println("NVS init failed - WiFi credentials not saved");
-    prefs.begin("wifiCreds", false);
-    prefs.putString("ssid", newSSID);
-    prefs.putString("pass", newPass);
-    prefs.end();
-    wifiSSID = newSSID;
-    wifiPassword = newPass;
-    Serial.println("WiFi credentials updated and saved to NVS");
+  // Auto-reconnect: if we were connected to a network and lost it, try to reconnect
+  if (connectedProfileIndex >= 0 && WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connection lost, attempting reconnect...");
+    connectedProfileIndex = -1;
+    if (!connectToSavedProfile()) startAPFallback();
+  }
+
+  if (pendingWiFi.action == NONE) return;
+  PendingAction action = pendingWiFi.action;
+  pendingWiFi.action = NONE;
+
+  switch (action) {
+    case SCAN_NETWORKS:
+      performScan();
+      break;
+
+    case DELETE_PROFILE: {
+      int idx = pendingWiFi.profileIndex;
+      if (idx >= 0 && idx < profileCount) {
+        bool deletingConnected = (idx == connectedProfileIndex);
+        Serial.printf("Deleting WiFi profile %d: %s\n", idx, profiles[idx].ssid.c_str());
+        // If deleting the connected profile, disconnect
+        if (deletingConnected) {
+          WiFi.disconnect(false, true);
+          connectedProfileIndex = -1;
+        } else if (connectedProfileIndex > idx) {
+          connectedProfileIndex--;
+        }
+        // Shift remaining profiles up
+        for (int i = idx; i < profileCount - 1; i++)
+          profiles[i] = profiles[i + 1];
+        profileCount--;
+        saveProfiles();
+        if (deletingConnected && !connectToSavedProfile()) startAPFallback();
+      }
+      break;
+    }
+
+    case CONNECT_SAVED: {
+      int idx = pendingWiFi.profileIndex;
+      if (idx >= 0 && idx < profileCount) {
+        if (tryConnectProfile(idx)) {
+          promoteProfile(idx);
+          saveProfiles();
+        } else {
+          if (!connectToSavedProfile()) startAPFallback();
+        }
+      }
+      break;
+    }
+
+    case CONNECT_NEW: {
+      String ssid = pendingWiFi.newSSID;
+      String password = pendingWiFi.newPassword;
+      bool connected = false;
+      if (pendingWiFi.newChannel != 0 && !scanAllChannels)
+        connected = tryConnect(ssid, password, pendingWiFi.newBssid, pendingWiFi.newChannel);
+      if (!connected)
+        connected = tryConnect(ssid, password);
+
+      if (connected) {
+        // Check if this SSID already exists in profiles (update it)
+        int existingIdx = -1;
+        for (int i = 0; i < profileCount; i++) {
+          if (profiles[i].ssid == ssid) {
+            existingIdx = i;
+            break;
+          }
+        }
+
+        WiFiProfile newProfile;
+        newProfile.ssid = ssid;
+        newProfile.password = password;
+        uint8_t* connBssid = WiFi.BSSID();
+        if (connBssid) {
+          memcpy(newProfile.bssid, connBssid, 6);
+          newProfile.channel = WiFi.channel();
+          newProfile.hasBssid = true;
+        }
+
+        if (existingIdx >= 0) {
+          // Update existing and promote to top
+          profiles[existingIdx] = newProfile;
+          promoteProfile(existingIdx);
+        } else {
+          // Add new profile at top, shift others down
+          if (profileCount >= MAX_WIFI_PROFILES) profileCount = MAX_WIFI_PROFILES - 1;
+          for (int i = profileCount; i > 0; i--)
+            profiles[i] = profiles[i - 1];
+          profiles[0] = newProfile;
+          profileCount++;
+        }
+        connectedProfileIndex = 0;
+        saveProfiles();
+        Serial.println("New WiFi profile saved and connected!");
+      } else {
+        Serial.println("Failed to connect to new network, trying saved profiles...");
+        if (!connectToSavedProfile()) startAPFallback();
+      }
+      break;
+    }
+
+    default:
+      break;
   }
 }
 
-bool WiFiManagerESP32::connectToWiFi(const String& ssid, const String& password, bool fromWeb) {
-  if (!fromWeb && WiFi.status() == WL_CONNECTED) {
-    Serial.println("Already connected to WiFi");
-    return true;
-  }
-  Serial.println("=== Connecting to WiFi Network" + String(fromWeb ? "(from web)" : "") + " ===");
-  Serial.printf("SSID: %s\nPassword: %s\n", ssid.c_str(), password.c_str());
-
-  WiFi.disconnect(false, true);
-  delay(100);
-  WiFi.persistent(false);
-  WiFi.setAutoReconnect(true);
-  WiFi.setHostname("OpenChess");
-  WiFi.mode(WIFI_STA);
-  if (scanAllChannels) {
-    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
-    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
-  }
-  WiFi.begin(ssid.c_str(), password.c_str());
-
-  int maxAttempts = scanAllChannels ? 30 : 15;
-  for (int attempts = 0; attempts < maxAttempts; attempts++) {
-    boardDriver->showConnectingAnimation(); // 1 second delay with animation to allow time for WiFi connection
-    wl_status_t st = WiFi.status();
-    Serial.printf("Connection attempt %d/%d - Status: %d\n", attempts + 1, maxAttempts, st);
-    if (st == WL_CONNECTED) {
-      Serial.println("Connected to WiFi!");
-      startMDNS();
-      lastUpdateInfo = otaUpdater.checkForUpdate();
-      return true;
-    }
-    // Only trust failure statuses after a few attempts to avoid stale status from a previous connection attempt that hasn't fully cleared yet
-    if (attempts >= 4 && (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL))
-      break;
-  }
-  Serial.println("Failed to connect to WiFi");
-  // Start AP as fallback so the user can configure WiFi credentials via the web interface
-  WiFi.mode(WIFI_AP);
-  if (!WiFi.softAP(AP_SSID, AP_PASSWORD)) {
-    Serial.println("ERROR: Failed to create Access Point!");
-  }
-  startMDNS();
+bool WiFiManagerESP32::ensureConnected() {
+  if (WiFi.status() == WL_CONNECTED) return true;
+  Serial.println("WiFi not connected, attempting reconnect...");
+  if (connectToSavedProfile()) return true;
+  startAPFallback();
   return false;
 }
 
@@ -775,4 +927,245 @@ void WiFiManagerESP32::onWebAssetsUploadBody(AsyncWebServerRequest* request, uin
       stopFlag = nullptr;
     }
   }
+}
+
+void WiFiManagerESP32::loadProfiles() {
+  profileCount = 0;
+  connectedProfileIndex = -1;
+
+  prefs.begin(NVS_WIFI_NAMESPACE, false);
+  profileCount = prefs.getUChar("count", 0);
+  if (profileCount > MAX_WIFI_PROFILES) profileCount = MAX_WIFI_PROFILES;
+  scanAllChannels = prefs.getBool("scanAll", false);
+
+  for (int i = 0; i < profileCount; i++) {
+    String idx = String(i);
+    profiles[i].ssid = prefs.getString(("ssid" + idx).c_str(), "");
+    profiles[i].password = prefs.getString(("pass" + idx).c_str(), "");
+    profiles[i].hasBssid = prefs.getBool(("hasBss" + idx).c_str(), false);
+    profiles[i].channel = prefs.getUChar(("chan" + idx).c_str(), 0);
+    if (profiles[i].hasBssid) {
+      size_t len = prefs.getBytes(("bssid" + idx).c_str(), profiles[i].bssid, 6);
+      if (len != 6) {
+        profiles[i].hasBssid = false;
+        memset(profiles[i].bssid, 0, 6);
+      }
+    }
+    Serial.printf("  Profile %d: SSID=%s, hasBSSID=%s, channel=%d\n", i, profiles[i].ssid.c_str(), profiles[i].hasBssid ? "yes" : "no", profiles[i].channel);
+  }
+  prefs.end();
+  Serial.printf("Loaded %d WiFi profile(s) from NVS\n", profileCount);
+}
+
+void WiFiManagerESP32::saveProfiles(bool saveAllProfiles) {
+  if (!ChessUtils::ensureNvsInitialized()) return;
+
+  prefs.begin(NVS_WIFI_NAMESPACE, false);
+  prefs.putBool("scanAll", scanAllChannels);
+  if (!saveAllProfiles) {
+    prefs.end();
+    return;
+  }
+
+  prefs.putUChar("count", (uint8_t)profileCount);
+  for (int i = 0; i < MAX_WIFI_PROFILES; i++) {
+    String idx = String(i);
+    if (i < profileCount) {
+      prefs.putString(("ssid" + idx).c_str(), profiles[i].ssid);
+      prefs.putString(("pass" + idx).c_str(), profiles[i].password);
+      prefs.putBool(("hasBss" + idx).c_str(), profiles[i].hasBssid);
+      prefs.putUChar(("chan" + idx).c_str(), profiles[i].channel);
+      if (profiles[i].hasBssid)
+        prefs.putBytes(("bssid" + idx).c_str(), profiles[i].bssid, 6);
+    } else {
+      if (prefs.isKey(("ssid" + idx).c_str())) prefs.remove(("ssid" + idx).c_str());
+      if (prefs.isKey(("pass" + idx).c_str())) prefs.remove(("pass" + idx).c_str());
+      if (prefs.isKey(("hasBss" + idx).c_str())) prefs.remove(("hasBss" + idx).c_str());
+      if (prefs.isKey(("chan" + idx).c_str())) prefs.remove(("chan" + idx).c_str());
+      if (prefs.isKey(("bssid" + idx).c_str())) prefs.remove(("bssid" + idx).c_str());
+    }
+  }
+  prefs.end();
+}
+
+void WiFiManagerESP32::promoteProfile(int index) {
+  if (index <= 0 || index >= profileCount) return;
+  WiFiProfile promoted = profiles[index];
+  for (int i = index; i > 0; i--)
+    profiles[i] = profiles[i - 1];
+  profiles[0] = promoted;
+  connectedProfileIndex = 0;
+}
+
+bool WiFiManagerESP32::waitForConnection(int maxAttempts) {
+  for (int i = 0; i < maxAttempts; i++) {
+    boardDriver->showConnectingAnimation();
+    wl_status_t st = WiFi.status();
+    Serial.printf("  Attempt %d/%d - Status: %d\n", i + 1, maxAttempts, st);
+    if (st == WL_CONNECTED) return true;
+    if (i >= 3 && (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL)) break;
+  }
+  return false;
+}
+
+bool WiFiManagerESP32::tryConnect(const String& ssid, const String& password, const uint8_t* bssid, uint8_t channel) {
+  bool isFast = (bssid != nullptr && channel > 0);
+  if (isFast)
+    Serial.printf("  Fast connect: SSID=%s, Password=%s, Channel=%d, BSSID=%02X:%02X:%02X:%02X:%02X:%02X\n", ssid.c_str(), password.c_str(), channel, bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+  else
+    Serial.printf("  Standard connect: SSID=%s, Password=%s\n", ssid.c_str(), password.c_str());
+
+  WiFi.disconnect(false, true);
+  delay(100);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.setHostname("OpenChess");
+  WiFi.mode(WIFI_STA);
+
+  int maxAttempts = isFast ? 5 : 10;
+  if (!isFast && scanAllChannels) {
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+    maxAttempts = 25;
+  }
+
+  if (isFast) {
+    WiFi.begin(ssid.c_str(), password.c_str(), channel, bssid);
+  } else {
+    WiFi.begin(ssid.c_str(), password.c_str());
+  }
+
+  if (waitForConnection(maxAttempts)) {
+    stopCaptivePortal();
+    startMDNS();
+    if (!otaChecked) {
+      lastUpdateInfo = otaUpdater.checkForUpdate();
+      otaChecked = true;
+    }
+    return true;
+  }
+  return false;
+}
+
+bool WiFiManagerESP32::tryConnectProfile(int index) {
+  if (index < 0 || index >= profileCount) return false;
+  WiFiProfile& p = profiles[index];
+
+  // Try fast BSSID+channel connect first (skip if scanAllChannels is enabled)
+  if (p.hasBssid && !scanAllChannels) {
+    if (tryConnect(p.ssid, p.password, p.bssid, p.channel)) {
+      Serial.println("  Fast connect succeeded!");
+      connectedProfileIndex = index;
+      return true;
+    }
+    Serial.println("  Fast connect failed, trying standard...");
+  }
+
+  // Standard connect (scans for the SSID)
+  if (tryConnect(p.ssid, p.password)) {
+    // Update cached BSSID and channel
+    uint8_t* connBssid = WiFi.BSSID();
+    if (connBssid && (!p.hasBssid || memcmp(p.bssid, connBssid, 6) != 0 || p.channel != WiFi.channel())) {
+      memcpy(p.bssid, connBssid, 6);
+      p.channel = WiFi.channel();
+      p.hasBssid = true;
+      Serial.printf("  Cached BSSID=%02X:%02X:%02X:%02X:%02X:%02X, Channel=%d\n", p.bssid[0], p.bssid[1], p.bssid[2], p.bssid[3], p.bssid[4], p.bssid[5], p.channel);
+    }
+    connectedProfileIndex = index;
+    return true;
+  }
+
+  connectedProfileIndex = -1;
+  Serial.printf("  Failed to connect to %s\n", p.ssid.c_str());
+  return false;
+}
+
+bool WiFiManagerESP32::connectToSavedProfile() {
+  for (int i = 0; i < profileCount; i++) {
+    if (tryConnectProfile(i)) {
+      promoteProfile(i);
+      saveProfiles();
+      return true;
+    }
+  }
+  return false;
+}
+
+void WiFiManagerESP32::startAPFallback() {
+  Serial.println("Starting AP fallback...");
+  WiFi.mode(WIFI_AP);
+  if (!WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET))
+    Serial.println("ERROR: Failed to configure AP IP settings!");
+  if (!WiFi.softAP(AP_SSID, AP_PASSWORD))
+    Serial.println("ERROR: Failed to create Access Point!");
+  startMDNS();
+  connectedProfileIndex = -1;
+  startCaptivePortal();
+  pendingWiFi.action = SCAN_NETWORKS;
+}
+
+void WiFiManagerESP32::startCaptivePortal() {
+  if (dnsTaskHandle != nullptr) return;
+  // Start DNS server for captive portal - resolves all domains to this AP's IP
+  dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+  dnsServer.start(53, "*", WiFi.softAPIP());
+  Serial.println("Captive portal DNS started, IP: " + WiFi.softAPIP().toString());
+  xTaskCreate(dnsTask, "DNS_Task", 2048, this, 5, &dnsTaskHandle);
+}
+
+void WiFiManagerESP32::stopCaptivePortal() {
+  if (dnsTaskHandle == nullptr) return;
+  vTaskDelete(dnsTaskHandle);
+  dnsTaskHandle = nullptr;
+  dnsServer.stop();
+  Serial.println("Captive portal DNS stopped");
+}
+
+void WiFiManagerESP32::dnsTask(void* param) {
+  WiFiManagerESP32* manager = static_cast<WiFiManagerESP32*>(param);
+  while (true) {
+    manager->dnsServer.processNextRequest();
+    vTaskDelay(pdMS_TO_TICKS(25));
+  }
+  vTaskDelete(nullptr);
+}
+
+void WiFiManagerESP32::pendingWiFiBackgroundTask(void* param) {
+  WiFiManagerESP32* manager = static_cast<WiFiManagerESP32*>(param);
+  while (true) {
+    manager->checkPendingWiFi();
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+  vTaskDelete(nullptr);
+}
+
+void WiFiManagerESP32::performScan() {
+  static bool scanInProgress = false;
+  if (scanInProgress) return;
+  scanInProgress = true;
+  Serial.println("Starting WiFi scan...");
+  int n = WiFi.scanNetworks(false, false);
+  Serial.printf("Scan found %d networks\n", n);
+  if (n > 0) {
+    if (scanResults) {
+      delete[] scanResults;
+      scanResults = nullptr;
+    }
+    scanResultCount = 0;
+    scanResults = new ScannedNetwork[n];
+    scanResultCount = n;
+    for (int i = 0; i < n; i++) {
+      scanResults[i].ssid = WiFi.SSID(i);
+      scanResults[i].rssi = WiFi.RSSI(i);
+      scanResults[i].channel = WiFi.channel(i);
+      scanResults[i].encryptionType = (uint8_t)WiFi.encryptionType(i);
+      uint8_t* bssid = WiFi.BSSID(i);
+      if (bssid)
+        memcpy(scanResults[i].bssid, bssid, 6);
+      else
+        memset(scanResults[i].bssid, 0, 6);
+    }
+  }
+  WiFi.scanDelete();
+  scanInProgress = false;
 }

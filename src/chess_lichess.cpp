@@ -19,7 +19,7 @@ ChessLichess::ChessLichess(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* w
 void ChessLichess::begin() {
   Serial.println("=== Starting Lichess Mode ===");
 
-  if (!wifiManager->connectToWiFi(wifiManager->getWiFiSSID(), wifiManager->getWiFiPassword())) {
+  if (!wifiManager->ensureConnected()) {
     Serial.println("Failed to connect to WiFi. Lichess mode unavailable.");
     boardDriver->flashBoardAnimation(LedColors::Red);
     gameOver = true;

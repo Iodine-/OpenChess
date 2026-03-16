@@ -11,8 +11,6 @@
 <body>
     <div class="container">
         <h2>OpenChess Home</h2>
-        <div class="status" id="status">Loading status...</div>
-
         <!-- WiFi Settings Section -->
         <div class="settings-section">
             <div class="section-header" onclick="toggleSection('wifi')">
@@ -32,18 +30,19 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-                <form id="wifiForm">
-                    <div class="form-group">
-                        <label for="ssid">WiFi SSID:</label>
-                        <input type="text" name="ssid" id="ssid" value="" placeholder="Enter Your WiFi SSID">
-                    </div>
-                    <div class="form-group">
-                        <label for="password">WiFi Password:</label>
-                        <input type="text" name="password" id="password" value=""
-                            placeholder="Enter Your WiFi Password">
-                    </div>
-                    <input type="submit" style="background-color: #4CAF50;" value="Connect to WiFi">
-                </form>
+
+                <label style="font-size: 16px; margin-bottom: 5px;">Saved Networks</label>
+                <div class="network-list" id="savedNetworks">
+                    <div class="network-item" style="color: #888; text-align: center;">Loading...</div>
+                </div>
+
+                <label style="font-size: 16px; margin-top: 12px; margin-bottom: 5px;">Available Networks</label>
+                <div class="network-list" id="scannedNetworks">
+                    <div class="network-item" style="color: #888; text-align: center;">No scan results yet</div>
+                </div>
+                <button type="button" id="scanBtn" class="button" style="background-color: #666; margin-top: 16px;">
+                    Scan for Networks
+                </button>
             </div>
         </div>
 
@@ -268,26 +267,178 @@
             }
         }
 
-        function updateWiFiInfo(retries = 0, maxRetries = 20) {
+        // ========== WiFi ==========
+        let wifiConnected = true;
+
+        function rssiToSignal(rssi) {
+            // Returns HTML for a CSS-based signal strength bar
+            let strength;
+            if (rssi >= -50) strength = 4;
+            else if (rssi >= -60) strength = 3;
+            else if (rssi >= -70) strength = 2;
+            else strength = 1;
+            const colors = ['#f44336', '#ff9800', '#ffc107', '#4CAF50'];
+            let bars = '';
+            for (let i = 0; i < 4; i++) {
+                const active = i < strength;
+                const h = 6 + i * 4; // bar heights: 6, 10, 14, 18
+                bars += '<span class="rssi-bar' + (active ? ' active' : '') + '" style="height:' + h + 'px;' + (active ? 'background:' + colors[strength - 1] : '') + '"></span>';
+            }
+            return '<span class="rssi-bars">' + bars + '</span>';
+        }
+
+        function encName(enc) {
+            // wifi_auth_mode_t: 0=OPEN,1=WEP,2=WPA_PSK,3=WPA2_PSK,4=WPA_WPA2_PSK,5=WPA2_ENTERPRISE,6=WPA3_PSK,...
+            if (enc === 0) return 'Open';
+            if (enc === 1) return 'WEP';
+            if (enc <= 4) return 'WPA2';
+            if (enc === 5) return 'WPA2-E';
+            return 'WPA3';
+        }
+
+        function renderSavedNetworks(data) {
+            const container = document.getElementById('savedNetworks');
+            const saved = data.saved || [];
+            if (saved.length === 0) {
+                container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No saved networks</div>';
+                return;
+            }
+            let html = '';
+            saved.forEach((net, i) => {
+                const isConnected = data.connected && i === data.connectedIndex;
+                const detail = net.rssi !== undefined
+                    ? rssiToSignal(net.rssi) + ' ' + net.rssi + ' dBm · Ch ' + net.channel + ' · ' + encName(net.enc)
+                    : 'Ch ' + net.channel;
+                const lockIcon = (net.enc !== undefined && net.enc !== 0) ? ' 🔒' : '';
+                html += '<div class="network-item">'
+                    + '<div class="network-info">'
+                    + '<div class="network-ssid">' + escapeHtml(net.ssid) + (isConnected ? ' <span style="color:#4CAF50;font-size:12px;">● Connected</span>' : '') + '</div>'
+                    + '<div class="network-detail">' + detail + lockIcon + '</div>'
+                    + '</div>'
+                    + '<div class="network-actions">'
+                    + (isConnected ? '' : '<button class="net-btn net-btn-connect" onclick="connectSaved(' + i + ')">Connect</button>')
+                    + '<button class="net-btn net-btn-delete" onclick="deleteSaved(' + i + ')">Delete</button>'
+                    + '</div></div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function renderScannedNetworks(data) {
+            const container = document.getElementById('scannedNetworks');
+            const scanned = data.scanned || [];
+            if (scanned.length === 0) {
+                container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No new networks found</div>';
+                return;
+            }
+            let html = '';
+            scanned.forEach(net => {
+                const isOpen = net.enc === 0;
+                html += '<div class="network-item">'
+                    + '<div class="network-info">'
+                    + '<div class="network-ssid">' + escapeHtml(net.ssid) + '</div>'
+                    + '<div class="network-detail">' + rssiToSignal(net.rssi) + ' ' + net.rssi + ' dBm · Ch ' + net.channel + ' · ' + encName(net.enc) + (isOpen ? '' : ' 🔒') + '</div>'
+                    + '</div>'
+                    + '<div class="network-actions">'
+                    + '<button class="net-btn net-btn-connect" onclick="connectScanned(\'' + escapeHtml(net.ssid) + '\',' + net.enc + ')">Connect</button>'
+                    + '</div></div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function updateWiFiInfo(retries, maxRetries) {
+            retries = retries || 0;
+            maxRetries = maxRetries || 20;
             fetch('/wifi')
-                .then(response => response.json())
+                .then(r => r.json())
                 .then(data => {
-                    document.getElementById('ssid').value = data.ssid;
-                    document.getElementById('password').value = data.password;
+                    wifiConnected = data.connected;
                     document.getElementById('scanAllChannels').checked = data.scanAllChannels;
-                    const isConnected = (data.connected || '').toString() === 'true';
-                    const statusText = isConnected ? `Connected to ${data.ssid} (${data.local_ip})` : `Access Point: ${data.ap_ssid} (${data.ap_ip})`;
-                    document.getElementById('status').textContent = statusText;
+                    if (!data.connected) {
+                        // Auto-expand WiFi section and scroll to it
+                        if (!sectionStates.wifi) toggleSection('wifi');
+                        setTimeout(() => {
+                            document.getElementById('wifi-content').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 100);
+                    }
+                    renderSavedNetworks(data);
+                    renderScannedNetworks(data);
                 })
                 .catch(() => {
                     if (retries < maxRetries) {
-                        const delayMs = Math.min(500 + (retries * 300), 5000);
-                        setTimeout(() => updateWiFiInfo(retries + 1, maxRetries), delayMs);
-                    } else {
-                        alert('Error fetching WiFi information. Please try again later.');
+                        const d = Math.min(500 + (retries * 300), 5000);
+                        setTimeout(() => updateWiFiInfo(retries + 1, maxRetries), d);
                     }
                 });
         }
+
+        function wifiAction(params) {
+            fetch('/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params
+            }).then(() => {
+                setTimeout(() => updateWiFiInfo(0, 25), 1000);
+            }).catch(() => {
+                setTimeout(() => updateWiFiInfo(0, 25), 1000);
+            });
+        }
+
+        function connectSaved(idx) {
+            wifiAction('action=connect&index=' + idx);
+        }
+
+        function deleteSaved(idx) {
+            if (!confirm('Remove this saved network?')) return;
+            fetch('/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'action=delete&index=' + idx
+            }).then(() => updateWiFiInfo())
+                .catch(() => updateWiFiInfo());
+        }
+
+        function connectScanned(ssid, enc) {
+            if (enc === 0) {
+                // Open network — connect immediately without password
+                wifiAction('action=connect&ssid=' + encodeURIComponent(ssid));
+                return;
+            }
+            const password = prompt('Enter password for "' + ssid + '":');
+            if (password === null) return;
+            wifiAction('action=connect&ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(password));
+        }
+
+        document.getElementById('scanBtn').addEventListener('click', function () {
+            this.textContent = 'Scanning...';
+            this.disabled = true;
+            fetch('/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'action=scan'
+            }).then(() => {
+                setTimeout(() => {
+                    updateWiFiInfo();
+                    document.getElementById('scanBtn').textContent = 'Scan for Networks';
+                    document.getElementById('scanBtn').disabled = false;
+                }, 6000);
+            }).catch(() => {
+                document.getElementById('scanBtn').textContent = 'Scan for Networks';
+                document.getElementById('scanBtn').disabled = false;
+            });
+        });
+
+        // Handle scan all channels toggle
+        document.getElementById('scanAllChannels').addEventListener('change', function () {
+            fetch('/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'scanAllChannels=' + (this.checked ? '1' : '0')
+            }).catch(() => { });
+        });
 
         function updateLichessInfo() {
             fetch('/lichess')
@@ -428,52 +579,6 @@
                         alert('Error starting calibration. Please try again.');
                     });
             }
-        });
-
-        // Handle scan all channels toggle (save immediately on change)
-        document.getElementById('scanAllChannels').addEventListener('change', function () {
-            const formData = new URLSearchParams();
-            formData.append('scanAllChannels', this.checked ? '1' : '0');
-            fetch('/wifi', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formData
-            }).catch(() => { console.log('Error saving scan setting'); });
-        });
-
-        // Handle WiFi form submission
-        document.getElementById('wifiForm').addEventListener('submit', function (e) {
-            e.preventDefault();
-            const ssid = document.getElementById('ssid').value;
-            const password = document.getElementById('password').value;
-
-            document.getElementById('status').textContent = 'Connecting...';
-
-            const formData = new URLSearchParams();
-            formData.append('ssid', ssid);
-            formData.append('password', password);
-            formData.append('scanAllChannels', document.getElementById('scanAllChannels').checked ? '1' : '0');
-            formData.append('scanAllChannels', document.getElementById('scanAllChannels').checked ? '1' : '0');
-
-            fetch('/wifi', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: formData
-            })
-                .then(response => response.text())
-                .then(data => {
-                    if (data === 'OK')
-                        setTimeout(() => updateWiFiInfo(0, 20), 1000);
-                    else
-                        alert('Bad credentials or already connected to this WiFi.');
-
-                })
-                .catch(() => {
-                    document.getElementById('status').textContent = 'Connecting... (retrying)';
-                    setTimeout(() => updateWiFiInfo(0, 20), 1000);
-                });
         });
 
         // Handle Lichess form submission
