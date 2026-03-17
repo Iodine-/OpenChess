@@ -726,31 +726,21 @@
         "title": "Software Setup",
         "intro": "With the hardware built, flash the firmware to bring your chess board to life.",
         "webInstaller": {
-            "text": "<h3><strong>⚡ Quick Flash</strong></h3>Don't want to install any tools? Use the <a href=\"flash.html\">Web Installer</a> to flash your ESP32 directly from the browser (Chrome/Edge only)</br>",
+            "text": "<h3><strong>⚡ Quick Flash</strong></h3>Don't want to build firmware from sources? Use the <a href=\"flash.html\">Web Installer</a> to flash your ESP32 directly from the browser (Chrome/Edge only)</br>",
             "buttonText": "Open Web Installer",
             "buttonUrl": "flash.html"
         },
         "steps": [
             {
-                "title": "1. Install Tools",
+                "title": "1. Install IDE",
                 "items": [
                     "Install <a href=\"https://code.visualstudio.com/\" target=\"_blank\">Visual Studio Code</a>",
-                    "Install the <a href=\"https://platformio.org/install/ide?install=vscode\" target=\"_blank\">PlatformIO IDE</a> extension"
+                    "Install the <a href=\"https://platformio.org/install/ide?install=vscode\" target=\"_blank\">PlatformIO IDE</a> extension",
+                    "Open the <code>.code-workspace</code> file in VS Code"
                 ]
             },
             {
-                "title": "2. Configure Firmware Defaults (optional)",
-                "items": [
-                    "Open the <code>.code-workspace</code> file in VS Code",
-                    "Edit GPIO pins in <code>board_driver.h</code> if you're using different pins than the default (pin order doesn't matter, calibration handles it)",
-                    "Set <code>SR_INVERT_OUTPUTS</code> to <code>1</code> in <code>board_driver.h</code> if using PNP transistors",
-                    "Edit your WiFi credentials in <code>wifi_manager_esp32.h</code> to give the ESP32 internet access",
-                    "Set <code>WIFI_SCAN_ALL_CHANNELS</code> to <code>1</code> in <code>wifi_manager_esp32.h</code> if connecting to a mesh WiFi network",
-                    "<strong>All these settings can also be changed at any time through the web interface, configuring defaults is optional</strong>"
-                ]
-            },
-            {
-                "title": "3. Flash",
+                "title": "2. Flash",
                 "items": [
                     "Connect the ESP32 via USB",
                     "Hold the <strong>BOOT</strong> button on the ESP32",
@@ -758,15 +748,15 @@
                 ]
             },
             {
-                "title": "4. Connect to Web UI",
+                "title": "3. Connect to Web UI",
                 "items": [
                     "Connect to the <strong>OpenChess</strong> WiFi (password: <strong>chess123</strong>)",
                     "Go to <a href='http://openchess.local' target='_blank'><strong>http://openchess.local</strong></a> to configure your board",
-                    "Click on <strong>Hardware Configuration</strong> and set the correct pins and transistor type (PNP/NPN) <strong>BEFORE</strong> connecting wires to GPIOs. Incorrect configuration with wires connected can cause short circuits"
+                    "Click on the <strong>GPIO</strong> section to set the correct pins and transistor type (PNP/NPN) <strong>BEFORE</strong> connecting wires to GPIOs. Incorrect configuration with wires connected can cause short circuits"
                 ]
             },
             {
-                "title": "5. Calibrate",
+                "title": "4. Calibrate",
                 "items": [
                     "After booting (or rebooting with new pins), the board enters calibration mode",
                     "Follow the Serial Monitor Console instructions (115200 baud) to calibrate sensors and LEDs",
@@ -774,7 +764,7 @@
                 ]
             },
             {
-                "title": "6. Play!",
+                "title": "5. Play!",
                 "items": [
                     "Power on the board - LEDs light up in the center for game selection",
                     "Place a piece on a lit square:<ul><li><strong style=\"color: #2196F3;\">Blue</strong> - Human vs Human</li><li><strong style=\"color: #4CAF50;\">Green</strong> - Human vs Stockfish</li><li><strong style=\"color: #FFEB3B;\">Yellow</strong> - Online (Lichess)</li><li><strong style=\"color: #F44336;\">Red</strong> - Sensor Test</li></ul>"

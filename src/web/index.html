@@ -15,10 +15,10 @@
         <div class="settings-section">
             <div class="section-header" onclick="toggleSection('wifi')">
                 <span class="section-icon" id="wifi-icon">▶</span>
-                <h3>WiFi Settings</h3>
+                <h3>WiFi</h3>
             </div>
             <div class="section-content" id="wifi-content">
-                <div class="toggle-row toggle-row-separated">
+                <div class="toggle-row toggle-row-divider">
                     <div>
                         <label class="toggle-label" for="scanAllChannels">Scan All WiFi Channels</label>
                         <p class="toggle-description">
@@ -31,16 +31,16 @@
                     </label>
                 </div>
 
-                <label style="font-size: 16px; margin-bottom: 5px;">Saved Networks</label>
+                <label style="margin-bottom: 5px;">Saved Networks</label>
                 <div class="network-list" id="savedNetworks">
                     <div class="network-item" style="color: #888; text-align: center;">Loading...</div>
                 </div>
 
-                <label style="font-size: 16px; margin-top: 12px; margin-bottom: 5px;">Available Networks</label>
+                <label style="margin-top: 12px; margin-bottom: 5px;">Available Networks</label>
                 <div class="network-list" id="scannedNetworks">
-                    <div class="network-item" style="color: #888; text-align: center;">No scan results yet</div>
+                    <div class="network-item" style="color: #888; text-align: center;">No scan results</div>
                 </div>
-                <button type="button" id="scanBtn" class="button" style="background-color: #666; margin-top: 16px;">
+                <button type="button" id="scanBtn" class="button" style="background-color: #4CAF50; margin-top: 16px;">
                     Scan for Networks
                 </button>
             </div>
@@ -50,7 +50,7 @@
         <div class="settings-section">
             <div class="section-header" onclick="toggleSection('lichess')">
                 <span class="section-icon" id="lichess-icon">▶</span>
-                <h3>Lichess Settings</h3>
+                <h3>Lichess</h3>
             </div>
             <div class="section-content" id="lichess-content">
                 <p class="section-description">
@@ -65,10 +65,10 @@
                 <form id="lichessForm">
                     <div class="form-group">
                         <label for="lichessToken">API Token:</label>
-                        <input type="password" name="lichessToken" id="lichessToken" value=""
+                        <input type="text" name="lichessToken" id="lichessToken" value=""
                             placeholder="lip_xxxxxxxxxxxxx">
                     </div>
-                    <input type="submit" style="background-color: #9c59b6;" value="Save Lichess Token">
+                    <input type="submit" style="background-color: #4CAF50;" value="Save Lichess Token">
                 </form>
             </div>
         </div>
@@ -77,7 +77,7 @@
         <div class="settings-section">
             <div class="section-header" onclick="toggleSection('board')">
                 <span class="section-icon" id="board-icon">▶</span>
-                <h3>Board Settings</h3>
+                <h3>LEDs & Board</h3>
             </div>
             <div class="section-content" id="board-content">
                 <p class="section-description">
@@ -85,85 +85,151 @@
                 </p>
                 <form id="boardSettingsForm">
                     <div class="form-group">
-                        <label for="brightness">LED Brightness: <span id="brightness-value">255</span></label>
+                        <label for="brightness">LED Brightness: <span id="brightness-value"
+                                style="color: #ec8703;">255</span></label>
                         <input type="range" id="brightness" name="brightness" min="10" max="255" value="255"
                             class="slider-input">
                     </div>
                     <div class="form-group">
-                        <label for="dimMultiplier">Dark Square Dimming: <span id="dim-value">70</span>%</label>
+                        <label for="dimMultiplier">Dark Square Dimming: <span id="dim-value"
+                                style="color: #ec8703;">70%</span></label>
                         <input type="range" id="dimMultiplier" name="dimMultiplier" min="20" max="100" value="70"
                             class="slider-input">
                     </div>
                     <input type="submit" style="background-color: #4CAF50;" value="Save LED Settings">
                 </form>
-                <div class="calibration-section">
-                    <p class="section-description" style="margin-top: 15px; margin-bottom: 10px;">
-                        Run board calibration to map LEDs and sensors to the correct squares.
-                    </p>
-                    <button type="button" id="calibrateBtn" class="button" style="background-color: #f44336;">
-                        Start Board Calibration
-                    </button>
-                </div>
+                <div class="hr-divider"></div>
+                <p class="section-description" style="margin: 0;">
+                    Run board calibration to map LEDs and sensors to the correct squares.
+                </p>
+                <button type="button" id="calibrateBtn" class="button" style="background-color: #f44336;">
+                    Start Board Calibration
+                </button>
+
             </div>
         </div>
 
-        <!-- Hardware Configuration Section -->
+        <!-- Hardware GPIO Configuration Section -->
         <div class="settings-section">
             <div class="section-header" onclick="toggleSection('hwconfig')">
                 <span class="section-icon" id="hwconfig-icon">▶</span>
-                <h3>Hardware Configuration</h3>
+                <h3>GPIO</h3>
             </div>
             <div class="section-content" id="hwconfig-content">
-                <p class="section-description">
-                    Set the correct pins and transistor type (PNP/NPN) BEFORE connecting wires to GPIOs.
-                    Incorrect configuration with wires connected can cause short circuits
-                </p>
+
+                <!-- Warning Banner -->
+                <div class="hw-warning-banner">
+                    <div class="hw-warning-title">⚡ Short Circuit Risk</div>
+                    <div class="hw-warning-text">
+                        Set the correct pins and transistor type (PNP/NPN)
+                        <span class="hw-before">BEFORE</span>
+                        connecting wires to GPIOs. Incorrect configuration with wires connected can cause short
+                        circuits.
+                    </div>
+                </div>
+
                 <form id="hwConfigForm">
-                    <div class="form-group">
-                        <label for="hw-ledPin">LED Strip Data Pin (GPIO)</label>
-                        <input type="number" id="hw-ledPin" min="0" max="39" class="text-input">
-                    </div>
-                    <div class="form-group">
-                        <label for="hw-srClkPin">Shift Register Clock Pin (SRCLK)</label>
-                        <input type="number" id="hw-srClkPin" min="0" max="39" class="text-input">
-                    </div>
-                    <div class="form-group">
-                        <label for="hw-srLatchPin">Shift Register Latch Pin (RCLK)</label>
-                        <input type="number" id="hw-srLatchPin" min="0" max="39" class="text-input">
-                    </div>
-                    <div class="form-group">
-                        <label for="hw-srDataPin">Shift Register Data Pin (SER)</label>
-                        <input type="number" id="hw-srDataPin" min="0" max="39" class="text-input">
-                    </div>
-                    <div class="toggle-row toggle-row-separated" style="padding-top: 0">
-                        <div>
-                            <label class="toggle-label" for="hw-srInvert"
-                                style="color: #ec8703; font-size: 20px; font-weight: bold;">
-                                Invert Shift Register Outputs
-                            </label>
-                            <p class="toggle-description">
-                                Enable if your sensors use PNP transistors
-                            </p>
+
+                    <!-- LED Strip + Shift Register merged card -->
+                    <div class="hw-section">
+                        <div class="hw-section-title-split">
+                            <span class="hw-section-title-split-sr">Shift Register</span>
+                            <span class="hw-section-title-split-led">LED Strip</span>
                         </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="hw-srInvert">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label>Row Input Pins (GPIO)</label>
-                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-                            <input type="number" id="hw-row0" min="0" max="39" class="text-input" placeholder="Row 0">
-                            <input type="number" id="hw-row1" min="0" max="39" class="text-input" placeholder="Row 1">
-                            <input type="number" id="hw-row2" min="0" max="39" class="text-input" placeholder="Row 2">
-                            <input type="number" id="hw-row3" min="0" max="39" class="text-input" placeholder="Row 3">
-                            <input type="number" id="hw-row4" min="0" max="39" class="text-input" placeholder="Row 4">
-                            <input type="number" id="hw-row5" min="0" max="39" class="text-input" placeholder="Row 5">
-                            <input type="number" id="hw-row6" min="0" max="39" class="text-input" placeholder="Row 6">
-                            <input type="number" id="hw-row7" min="0" max="39" class="text-input" placeholder="Row 7">
+                        <div class="hw-section-body">
+                            <div class="hw-top-pins">
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-srClkPin">SRCLK</label>
+                                    <input type="number" id="hw-srClkPin" min="0" max="39"
+                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-srLatchPin">RCLK</label>
+                                    <input type="number" id="hw-srLatchPin" min="0" max="39"
+                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-srDataPin">SER</label>
+                                    <input type="number" id="hw-srDataPin" min="0" max="39"
+                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
+                                </div>
+                                <div class="hw-top-pins-divider"></div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-ledPin">DIN</label>
+                                    <input type="number" id="hw-ledPin" min="0" max="39"
+                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
+                                </div>
+                            </div>
+
+                            <div class="hr-divider"></div>
+
+                            <div class="hw-transistor-row">
+                                <div class="hw-transistor-info">
+                                    <label class="toggle-label">Transistor Type</label>
+                                    <p class="toggle-description">Invert Shift Register outputs for PNP</p>
+                                </div>
+                                <div class="hw-npn-pnp-toggle">
+                                    <span class="hw-transistor-label" id="hw-npn-label">NPN</span>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="hw-srInvert" onchange="updateTransistorLabels(this)">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="hw-transistor-label" id="hw-pnp-label">PNP</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <input type="submit" style="background-color: #FF9800;" value="Save & Reboot">
+
+                    <!-- Row Inputs Section -->
+                    <div class="hw-section">
+                        <div class="hw-section-title">Row Inputs</div>
+                        <div class="hw-section-body">
+                            <div class="hw-row-pins">
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row0">Row 0</label>
+                                    <input type="number" id="hw-row0" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row1">Row 1</label>
+                                    <input type="number" id="hw-row1" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row2">Row 2</label>
+                                    <input type="number" id="hw-row2" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row3">Row 3</label>
+                                    <input type="number" id="hw-row3" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row4">Row 4</label>
+                                    <input type="number" id="hw-row4" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row5">Row 5</label>
+                                    <input type="number" id="hw-row5" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row6">Row 6</label>
+                                    <input type="number" id="hw-row6" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row7">Row 7</label>
+                                    <input type="number" id="hw-row7" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <input type="submit" style="background-color: #4CAF50;" value="Save & Reboot">
                 </form>
             </div>
         </div>
@@ -172,10 +238,10 @@
         <div class="settings-section">
             <div class="section-header" onclick="toggleSection('ota')">
                 <span class="section-icon" id="ota-icon">▶</span>
-                <h3>Software Updates</h3>
+                <h3>Updates</h3>
             </div>
             <div class="section-content" id="ota-content">
-                <div class="toggle-row toggle-row-separated">
+                <div class="toggle-row toggle-row-divider">
                     <div>
                         <label class="toggle-label" for="autoOtaToggle">Automatic Updates</label>
                         <p class="toggle-description">
@@ -200,7 +266,7 @@
                 </div>
 
                 <div class="ota-manual-section">
-                    <p class="section-description" style="margin-top: 15px; margin-bottom: 10px;">
+                    <p class="section-description" style="margin-bottom: 5px;">
                         Manual update: drag & drop firmware (.bin) or web assets (.tar) files below.
                     </p>
                     <div class="ota-drop-zone" id="otaDropZone">
@@ -254,6 +320,16 @@
         };
 
         function toggleSection(name) {
+            // Close all other sections
+            for (const key in sectionStates) {
+                if (key !== name && sectionStates[key]) {
+                    sectionStates[key] = false;
+                    document.getElementById(key + '-content').classList.remove('expanded');
+                    document.getElementById(key + '-icon').textContent = '▶';
+                }
+            }
+
+            // Toggle current section
             sectionStates[name] = !sectionStates[name];
             const content = document.getElementById(name + '-content');
             const icon = document.getElementById(name + '-icon');
@@ -261,6 +337,11 @@
             if (sectionStates[name]) {
                 content.classList.add('expanded');
                 icon.textContent = '▼';
+
+                // Smooth scroll to the expanded section
+                setTimeout(() => {
+                    content.parentElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 500);
             } else {
                 content.classList.remove('expanded');
                 icon.textContent = '▶';
@@ -326,10 +407,13 @@
         function renderScannedNetworks(data) {
             const container = document.getElementById('scannedNetworks');
             const scanned = data.scanned || [];
+            const scanBtn = document.getElementById('scanBtn');
             if (scanned.length === 0) {
-                container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No new networks found</div>';
+                container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No scan results</div>';
+                if (scanBtn) scanBtn.style.backgroundColor = '#4CAF50';
                 return;
             }
+            if (scanBtn) scanBtn.style.backgroundColor = '#666';
             let html = '';
             scanned.forEach(net => {
                 const isOpen = net.enc === 0;
@@ -454,7 +538,9 @@
                     }
                 })
                 .catch(() => {
-                    document.getElementById('lichess-token-status').textContent = 'Error loading status';
+                    const statusEl = document.getElementById('lichess-token-status');
+                    statusEl.textContent = 'Error loading status';
+                    statusEl.style.color = '#f44336';
                 });
         }
 
@@ -473,7 +559,7 @@
                     document.getElementById('brightness').value = data.brightness;
                     document.getElementById('brightness-value').textContent = data.brightness;
                     document.getElementById('dimMultiplier').value = data.dimMultiplier;
-                    document.getElementById('dim-value').textContent = data.dimMultiplier;
+                    document.getElementById('dim-value').textContent = data.dimMultiplier + '%';
                 })
                 .catch(() => {
                     console.log('Error loading board settings');
@@ -486,7 +572,7 @@
         });
 
         document.getElementById('dimMultiplier').addEventListener('input', function () {
-            document.getElementById('dim-value').textContent = this.value;
+            document.getElementById('dim-value').textContent = this.value + '%';
         });
 
         // Handle board settings form submission
@@ -519,6 +605,18 @@
         });
 
         // Hardware config functions
+        function updateTransistorLabels(checkbox) {
+            const npnLabel = document.getElementById('hw-npn-label');
+            const pnpLabel = document.getElementById('hw-pnp-label');
+            if (checkbox.checked) {
+                npnLabel.classList.remove('hw-transistor-label-active');
+                pnpLabel.classList.add('hw-transistor-label-active');
+            } else {
+                pnpLabel.classList.remove('hw-transistor-label-active');
+                npnLabel.classList.add('hw-transistor-label-active');
+            }
+        }
+
         function updateHardwareConfig() {
             fetch('/hardware-config')
                 .then(response => response.json())
@@ -527,12 +625,16 @@
                     document.getElementById('hw-srClkPin').value = data.srClkPin;
                     document.getElementById('hw-srLatchPin').value = data.srLatchPin;
                     document.getElementById('hw-srDataPin').value = data.srDataPin;
-                    document.getElementById('hw-srInvert').checked = data.srInvertOutputs;
+                    const srInvert = document.getElementById('hw-srInvert');
+                    srInvert.checked = data.srInvertOutputs;
+                    updateTransistorLabels(srInvert);
                     for (let i = 0; i < data.rowPins.length; i++) {
                         document.getElementById('hw-row' + i).value = data.rowPins[i];
                     }
                 })
                 .catch(() => {
+                    // Set NPN as default active on load failure
+                    updateTransistorLabels(document.getElementById('hw-srInvert'));
                     console.log('Error loading hardware config');
                 });
         }

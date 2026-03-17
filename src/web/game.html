@@ -37,17 +37,17 @@
         <div id="botConfigPanel" class="config-panel anim-panel">
             <h3>Bot Configuration</h3>
 
-            <div style="margin-bottom: 15px;">
-                <label style="font-weight: bold;">Your Color:</label><br>
-                <select id="botPlayerColor" style="padding: 8px; font-size: 16px; margin-top: 5px; width: 100%;">
+            <div class="form-group">
+                <label for="botPlayerColor">Your Color:</label>
+                <select id="botPlayerColor">
                     <option value="white">Play as White (bot is Black)</option>
                     <option value="black">Play as Black (bot is White)</option>
                 </select>
             </div>
 
-            <div style="margin-bottom: 15px;">
-                <label style="font-weight: bold;">Difficulty:</label><br>
-                <select id="botDifficulty" style="padding: 8px; font-size: 16px; margin-top: 5px; width: 100%;">
+            <div class="form-group">
+                <label for="botDifficulty">Difficulty:</label>
+                <select id="botDifficulty">
                     <option value="1">Easy (Depth 5, Fast)</option>
                     <option value="2" selected>Medium (Depth 8, Balanced)</option>
                     <option value="3">Hard (Depth 11, Slow)</option>
@@ -55,12 +55,10 @@
                 </select>
             </div>
 
-            <button onclick="selectGame(2)"
-                style="padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%;">
+            <button onclick="selectGame(2)" class="button" style="background-color: #4CAF50;">
                 Start Game
             </button>
-            <button onclick="hideBotConfig()"
-                style="padding: 10px 20px; font-size: 16px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 10px;">
+            <button onclick="hideBotConfig()" class="button" style="background-color: #f44336;">
                 Cancel
             </button>
         </div>
