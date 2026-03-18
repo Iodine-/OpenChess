@@ -306,10 +306,63 @@
             </div>
         </div>
 
+        <!-- Custom Modal -->
+        <div class="modal-overlay" id="modalOverlay">
+            <div class="modal-box">
+                <p id="modalMessage"></p>
+                <input type="text" id="modalInput" style="display:none;" autocomplete="off">
+                <div class="modal-actions">
+                    <button type="button" id="modalOkBtn" class="button"
+                        style="background-color: #4CAF50; margin: 5px 0;">Confirm</button>
+                    <button type="button" id="modalCancelBtn" class="button"
+                        style="background-color: #666; margin: 5px 0;">Cancel</button>
+                </div>
+            </div>
+        </div>
+
         <a href="./game.html" class="button">GameMode Selection</a>
         <a href="./board.html" class="button">View Board</a>
     </div>
     <script>
+        // Custom modal dialogs
+        var _modalResolve = null;
+        function _showModal(message, type, placeholder) {
+            var overlay = document.getElementById('modalOverlay');
+            var msgEl = document.getElementById('modalMessage');
+            var inputEl = document.getElementById('modalInput');
+            var cancelBtn = document.getElementById('modalCancelBtn');
+            msgEl.textContent = message;
+            if (type === 'prompt') {
+                inputEl.style.display = '';
+                inputEl.value = '';
+                inputEl.placeholder = placeholder || '';
+            } else {
+                inputEl.style.display = 'none';
+            }
+            cancelBtn.style.display = (type === 'alert') ? 'none' : '';
+            overlay.classList.add('visible');
+            if (type === 'prompt') setTimeout(function () { inputEl.focus(); }, 100);
+            return new Promise(function (resolve) { _modalResolve = resolve; });
+        }
+        function _closeModal(result) {
+            document.getElementById('modalOverlay').classList.remove('visible');
+            if (_modalResolve) { var r = _modalResolve; _modalResolve = null; r(result); }
+        }
+        document.getElementById('modalOkBtn').addEventListener('click', function () {
+            var inputEl = document.getElementById('modalInput');
+            _closeModal(inputEl.style.display !== 'none' ? inputEl.value : true);
+        });
+        document.getElementById('modalCancelBtn').addEventListener('click', function () {
+            var inputEl = document.getElementById('modalInput');
+            _closeModal(inputEl.style.display !== 'none' ? null : false);
+        });
+        document.getElementById('modalInput').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') document.getElementById('modalOkBtn').click();
+        });
+        function showAlert(msg) { return _showModal(msg, 'alert'); }
+        function showConfirm(msg) { return _showModal(msg, 'confirm'); }
+        function showPrompt(msg, placeholder) { return _showModal(msg, 'prompt', placeholder); }
+
         // Section toggle state
         const sectionStates = {
             wifi: false,
@@ -350,6 +403,7 @@
 
         // ========== WiFi ==========
         let wifiConnected = true;
+        let lastWifiData = null;
 
         function rssiToSignal(rssi) {
             // Returns HTML for a CSS-based signal strength bar
@@ -406,7 +460,7 @@
 
         function renderScannedNetworks(data) {
             const container = document.getElementById('scannedNetworks');
-            const scanned = data.scanned || [];
+            const scanned = (data.scanned || []).slice().sort((a, b) => b.rssi - a.rssi);
             const scanBtn = document.getElementById('scanBtn');
             if (scanned.length === 0) {
                 container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No scan results</div>';
@@ -439,6 +493,7 @@
             fetch('/wifi')
                 .then(r => r.json())
                 .then(data => {
+                    lastWifiData = data;
                     wifiConnected = data.connected;
                     document.getElementById('scanAllChannels').checked = data.scanAllChannels;
                     if (!data.connected) {
@@ -475,23 +530,43 @@
             wifiAction('action=connect&index=' + idx);
         }
 
-        function deleteSaved(idx) {
-            if (!confirm('Remove this saved network?')) return;
+        async function deleteSaved(idx) {
+            if (!await showConfirm('Remove this saved network?')) return;
+            // If deleting the connected network, optimistically update UI since the fetch to refresh will fail after disconnection
+            const isDeletingConnected = lastWifiData && lastWifiData.connected && idx === lastWifiData.connectedIndex;
+            if (isDeletingConnected && lastWifiData) {
+                const deleted = lastWifiData.saved[idx];
+                const data = JSON.parse(JSON.stringify(lastWifiData));
+                data.saved.splice(idx, 1);
+                data.connected = false;
+                data.connectedIndex = -1;
+                if (deleted && deleted.rssi !== undefined) {
+                    data.scanned = data.scanned || [];
+                    data.scanned.push(deleted);
+                    data.scanned.sort((a, b) => b.rssi - a.rssi);
+                }
+                lastWifiData = data;
+                wifiConnected = false;
+                renderSavedNetworks(data);
+                renderScannedNetworks(data);
+            }
             fetch('/wifi', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'action=delete&index=' + idx
             }).then(() => updateWiFiInfo())
-                .catch(() => updateWiFiInfo());
+                .catch(() => {
+                    if (!isDeletingConnected) updateWiFiInfo();
+                });
         }
 
-        function connectScanned(ssid, enc) {
+        async function connectScanned(ssid, enc) {
             if (enc === 0) {
                 // Open network — connect immediately without password
                 wifiAction('action=connect&ssid=' + encodeURIComponent(ssid));
                 return;
             }
-            const password = prompt('Enter password for "' + ssid + '":');
+            const password = await showPrompt('Enter password for "' + ssid + '":', 'Password');
             if (password === null) return;
             wifiAction('action=connect&ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(password));
         }
@@ -594,13 +669,13 @@
             })
                 .then(response => {
                     if (response.ok) {
-                        alert('LED settings saved successfully!');
+                        showAlert('LED settings saved successfully!');
                     } else {
-                        alert('Failed to save settings. Please try again.');
+                        showAlert('Failed to save settings. Please try again.');
                     }
                 })
                 .catch(() => {
-                    alert('Error saving settings. Please try again.');
+                    showAlert('Error saving settings. Please try again.');
                 });
         });
 
@@ -639,9 +714,9 @@
                 });
         }
 
-        document.getElementById('hwConfigForm').addEventListener('submit', function (e) {
+        document.getElementById('hwConfigForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            if (!confirm('The board will save the new pin configuration and reboot. If sensor or shift register pins changed, calibration will run automatically. Continue?')) return;
+            if (!await showConfirm('The board will save the new pin configuration and reboot. If sensor or shift register pins changed, calibration will run automatically. Continue?')) return;
 
             const formData = new URLSearchParams();
             formData.append('ledPin', document.getElementById('hw-ledPin').value);
@@ -660,25 +735,25 @@
             })
                 .then(response => response.text())
                 .then(data => {
-                    alert(data);
+                    showAlert(data);
                 })
                 .catch(() => {
-                    alert('Error saving hardware config.');
+                    showAlert('Error saving hardware config.');
                 });
         });
 
         // Handle calibration button
-        document.getElementById('calibrateBtn').addEventListener('click', function () {
-            if (confirm('This will clear the current board calibration. The board will need to be calibrated on the next reboot. Continue?')) {
+        document.getElementById('calibrateBtn').addEventListener('click', async function () {
+            if (await showConfirm('This will clear the current board calibration. The board will need to be calibrated on the next reboot. Continue?')) {
                 fetch('/board-calibrate', {
                     method: 'POST'
                 })
                     .then(response => response.text())
                     .then(data => {
-                        alert(data);
+                        showAlert(data);
                     })
                     .catch(() => {
-                        alert('Error starting calibration. Please try again.');
+                        showAlert('Error starting calibration. Please try again.');
                     });
             }
         });
@@ -689,7 +764,7 @@
             const token = document.getElementById('lichessToken').value;
 
             if (token.length < 10) {
-                alert('Please enter a valid Lichess API token');
+                showAlert('Please enter a valid Lichess API token');
                 return;
             }
 
@@ -705,15 +780,15 @@
             })
                 .then(response => {
                     if (response.ok) {
-                        alert('Lichess token saved successfully!');
+                        showAlert('Lichess token saved successfully!');
                         document.getElementById('lichessToken').value = '';
                         updateLichessInfo();
                     } else {
-                        alert('Failed to save token. Please try again.');
+                        showAlert('Failed to save token. Please try again.');
                     }
                 })
                 .catch(() => {
-                    alert('Error saving token. Please try again.');
+                    showAlert('Error saving token. Please try again.');
                 });
         });
 
@@ -827,7 +902,7 @@
             e.target.value = '';
         });
 
-        function handleOtaFile(file) {
+        async function handleOtaFile(file) {
             const name = file.name.toLowerCase();
             let endpoint = '';
             let typeLabel = '';
@@ -839,11 +914,11 @@
                 endpoint = '/ota/upload/web';
                 typeLabel = 'web assets';
             } else {
-                alert('Unsupported file type. Please use .bin (firmware) or .tar (web assets).');
+                showAlert('Unsupported file type. Please use .bin (firmware) or .tar (web assets).');
                 return;
             }
 
-            if (!confirm('Upload ' + file.name + ' as ' + typeLabel + ' update?\n\n' +
+            if (!await showConfirm('Upload ' + file.name + ' as ' + typeLabel + ' update?\n\n' +
                 (typeLabel === 'firmware' ? 'The board will reboot after update.' : 'Web assets will be updated (saved games preserved).'))) {
                 return;
             }

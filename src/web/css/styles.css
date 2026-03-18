@@ -33,6 +33,7 @@
     29. Lichess Status
     30. OTA Version Info
     31. OTA Update Popup
+    31b. Custom Modal Popups
     32. OTA Manual Upload
     33. Hardware Configuration
     34. Custom Scrollbars
@@ -1600,6 +1601,53 @@ input[type="submit"]:hover,
     border-radius: 8px;
     background-color: var(--dark4);
     font-size: 13px;
+}
+
+
+/* ==========  31b. Custom Modal Popups  ======================= */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1001;
+}
+
+.modal-overlay.visible {
+    display: flex;
+}
+
+.modal-box {
+    background-color: var(--bg-color);
+    border: 2px solid var(--accent-orange);
+    border-radius: 12px;
+    padding: 25px;
+    width: 340px;
+    max-width: 90vw;
+    text-align: center;
+}
+
+.modal-box p {
+    color: #ccc;
+    font-size: 15px;
+    margin: 0 0 15px;
+    white-space: pre-line;
+}
+
+.modal-box input[type="text"] {
+    margin-bottom: 15px;
+}
+
+.modal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
 }
 
 

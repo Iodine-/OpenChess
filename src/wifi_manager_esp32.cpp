@@ -123,7 +123,7 @@ void WiFiManagerESP32::begin() {
   server.begin();
   Serial.println("Web server started on port: " + String(HTTP_PORT));
 
-  xTaskCreate(pendingWiFiBackgroundTask, "WiFi_Pending_Task", 4096, this, 4, &pendingWiFiTaskHandle);
+  xTaskCreate(pendingWiFiBackgroundTask, "WiFi_Pending_Task", 8192, this, 4, &pendingWiFiTaskHandle);
 }
 
 String WiFiManagerESP32::getBoardUpdateJSON() {
@@ -1015,6 +1015,7 @@ bool WiFiManagerESP32::tryConnect(const String& ssid, const String& password, co
   else
     Serial.printf("  Standard connect: SSID=%s, Password=%s\n", ssid.c_str(), password.c_str());
 
+  stopCaptivePortal();
   WiFi.disconnect(false, true);
   delay(100);
   WiFi.persistent(false);
@@ -1036,7 +1037,6 @@ bool WiFiManagerESP32::tryConnect(const String& ssid, const String& password, co
   }
 
   if (waitForConnection(maxAttempts)) {
-    stopCaptivePortal();
     startMDNS();
     if (!otaChecked) {
       lastUpdateInfo = otaUpdater.checkForUpdate();
