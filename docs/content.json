@@ -732,11 +732,13 @@
         },
         "steps": [
             {
-                "title": "1. Install IDE",
+                "title": "1. Install Tools",
                 "items": [
                     "Install <a href=\"https://code.visualstudio.com/\" target=\"_blank\">Visual Studio Code</a>",
                     "Install the <a href=\"https://platformio.org/install/ide?install=vscode\" target=\"_blank\">PlatformIO IDE</a> extension",
-                    "Open the <code>.code-workspace</code> file in VS Code"
+                    "Install <a href=\"https://nodejs.org/\" target=\"_blank\">Node.js</a> (includes <code>npm</code>, needed to minify web assets)",
+                    "Open a terminal and run <code>npm install -g html-minifier-terser clean-css-cli terser</code>",
+                    "Open the <code>.code-workspace</code> file in Visual Studio Code"
                 ]
             },
             {
@@ -744,7 +746,7 @@
                 "items": [
                     "Connect the ESP32 via USB",
                     "Hold the <strong>BOOT</strong> button on the ESP32",
-                    "Click <strong>Upload</strong> (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd>) in VS Code"
+                    "Click <strong>Upload</strong> (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd>) in Visual Studio Code"
                 ]
             },
             {
