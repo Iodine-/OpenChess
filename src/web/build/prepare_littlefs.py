@@ -84,15 +84,11 @@ has_files = BUILD_DIR.exists() and any(
 if not has_files:
     if DATA_DIR.exists() and any(DATA_DIR.rglob("*")):
         print(
-            "No minified files in src/web/build/ — using existing data/ from repository."
+            "No minified files in src/web/build/ - using existing data/ directory."
         )
     else:
         print(
-            "Warning: No minified files found and no pre-built data/ directory.",
-            file=sys.stderr,
-        )
-        print(
-            "Install minification tools or restore data/ from the repository.",
+            "No files found in data/ - LittleFS image will be empty.",
             file=sys.stderr,
         )
 else:

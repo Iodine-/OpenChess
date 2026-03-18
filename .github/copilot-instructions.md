@@ -33,7 +33,7 @@ Board arrays use `[row][col]` where **row 0 = rank 8** (black's back rank), **co
 
 ### Prerequisites
 - VS Code + PlatformIO IDE extension
-- For web asset minification (optional): `npm install -g html-minifier-terser clean-css-cli terser`
+- For web asset minification: `npm install -g html-minifier-terser clean-css-cli terser`
 
 ### Build Pipeline
 PlatformIO runs pre-build scripts defined in `platformio.ini`:

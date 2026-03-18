@@ -21,6 +21,14 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install web minification tools
+        run: npm install -g html-minifier-terser clean-css-cli terser
+
       - name: Install PlatformIO
         run: pip install platformio
 
