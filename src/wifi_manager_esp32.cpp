@@ -972,6 +972,220 @@ void WiFiManagerESP32::performScan() {
   scanInProgress = false;
 }
 
+void WiFiManagerESP32::handleGamesRequest(AsyncWebServerRequest* request) {
+  if (request->hasArg("id")) {
+    String idStr = request->arg("id");
+
+    // GET /games?id=live1 — return live moves file directly
+    if (idStr == "live1") {
+      if (!MoveHistory::quietExists("/games/live.bin")) {
+        request->send(404, "text/plain", "No live game");
+        return;
+      }
+      AsyncWebServerResponse* response = request->beginResponse(LittleFS, "/games/live.bin", "application/octet-stream", true);
+      request->send(response);
+      return;
+    }
+
+    // GET /games?id=live2 — return live FEN table file directly
+    if (idStr == "live2") {
+      if (!MoveHistory::quietExists("/games/live_fen.bin")) {
+        request->send(404, "text/plain", "No live FEN table");
+        return;
+      }
+      AsyncWebServerResponse* response = request->beginResponse(LittleFS, "/games/live_fen.bin", "application/octet-stream", true);
+      request->send(response);
+      return;
+    }
+
+    // GET /games?id=N — return binary of game N
+    int id = idStr.toInt();
+    if (id <= 0) {
+      request->send(400, "text/plain", "Invalid game id");
+      return;
+    }
+
+    String path = MoveHistory::gamePath(id);
+    if (!MoveHistory::quietExists(path.c_str())) {
+      request->send(404, "text/plain", "Game not found");
+      return;
+    }
+    // Serve file directly from LittleFS
+    AsyncWebServerResponse* response = request->beginResponse(LittleFS, path, "application/octet-stream", true);
+    request->send(response);
+  } else {
+    // GET /games — return JSON list of all saved games
+    request->send(200, "application/json", moveHistory->getGameListJSON());
+  }
+}
+
+void WiFiManagerESP32::handleDeleteGame(AsyncWebServerRequest* request) {
+  if (!request->hasArg("id")) {
+    request->send(400, "text/plain", "Missing id parameter");
+    return;
+  }
+
+  int id = request->arg("id").toInt();
+  if (id <= 0) {
+    request->send(400, "text/plain", "Invalid game id");
+    return;
+  }
+
+  if (moveHistory->deleteGame(id))
+    request->send(200, "text/plain", "OK");
+  else
+    request->send(404, "text/plain", "Game not found");
+}
+
+// ========== OTA Update Handlers ==========
+
+void WiFiManagerESP32::handleOtaStatus(AsyncWebServerRequest* request) {
+  if (lastUpdateInfo.version.isEmpty()) {
+    request->send(400, "text/plain", "No update info available.");
+    return;
+  }
+
+  JsonDocument doc;
+  doc["version"] = FIRMWARE_VERSION;
+  doc["autoUpdate"] = autoOtaEnabled;
+  doc["available"] = lastUpdateInfo.available;
+  doc["latestVersion"] = lastUpdateInfo.version;
+  doc["hasFirmware"] = lastUpdateInfo.firmwareUrl.length() > 0;
+  doc["hasWebAssets"] = lastUpdateInfo.webAssetsUrl.length() > 0;
+  String output;
+  serializeJson(doc, output);
+  request->send(200, "application/json", output);
+}
+
+void WiFiManagerESP32::handleOtaSettings(AsyncWebServerRequest* request) {
+  if (request->hasArg("autoUpdate")) {
+    autoOtaEnabled = request->arg("autoUpdate") == "1";
+    if (ChessUtils::ensureNvsInitialized()) {
+      Preferences p;
+      p.begin("ota", false);
+      p.putBool("autoUpdate", autoOtaEnabled);
+      p.end();
+    }
+    WebSerial.printf("OTA: Auto-update %s\n", autoOtaEnabled ? "enabled" : "disabled");
+    request->send(200, "text/plain", "OK");
+  } else {
+    request->send(400, "text/plain", "Missing parameter");
+  }
+}
+
+// Parameters passed to the OTA apply task via heap allocation (avoids static variable race conditions)
+struct OtaApplyParams {
+  OtaUpdateInfo info;
+  OtaUpdater* updater;
+};
+
+void WiFiManagerESP32::handleOtaApply(AsyncWebServerRequest* request) {
+  if (!lastUpdateInfo.available) {
+    request->send(400, "text/plain", "No update available. Check for updates first.");
+    return;
+  }
+
+  request->send(200, "text/plain", "Updating... The board will reboot when complete.");
+
+  // Run update in a separate task to not block the web server response.
+  // Heap-allocate params so the info survives after this function returns.
+  auto* params = new OtaApplyParams{lastUpdateInfo, &otaUpdater};
+  lastUpdateInfo.available = false; // Prevent concurrent apply requests
+
+  xTaskCreate(
+      [](void* param) {
+        auto* p = static_cast<OtaApplyParams*>(param);
+        delay(500); // Give time for the HTTP response to be sent
+        p->updater->applyUpdate(p->info);
+        delete p;
+        vTaskDelete(NULL);
+      },
+      "ota_apply", 8192, params, 1, NULL);
+}
+
+void WiFiManagerESP32::onFirmwareUploadBody(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+  // Can't use applyFirmwareFromStream() here — ESPAsyncWebServer delivers the body in async chunks,
+  // not as a Stream. We call Update.begin/write/end incrementally across chunk callbacks instead.
+  static std::atomic<bool>* stopFlag = nullptr;
+  if (index == 0) {
+    if (stopFlag == nullptr)
+      stopFlag = boardDriver->startWaitingAnimation();
+    WebSerial.printf("OTA: Firmware upload started (%d bytes)\n", total);
+    if (!Update.begin(total, U_FLASH)) {
+      WebSerial.printf("OTA: Not enough space: %s\n", Update.errorString());
+      return;
+    }
+  }
+  if (Update.isRunning()) {
+    if (Update.write(data, len) != len) {
+      WebSerial.printf("OTA: Write failed: %s\n", Update.errorString());
+      Update.abort();
+    }
+  }
+  if (index + len == total) {
+    if (stopFlag) {
+      stopFlag->store(true);
+      stopFlag = nullptr;
+    }
+    if (!Update.isRunning()) {
+      // Update.begin() failed or a write error aborted the update
+      request->send(500, "text/plain", "Firmware update failed");
+    } else if (Update.end(true)) {
+      WebSerial.println("OTA: Firmware upload complete, rebooting...");
+      request->send(200, "text/plain", "Firmware updated! Rebooting...");
+      boardDriver->flashBoardAnimation(LedColors::Blue, 2);
+      delay(500);
+      ESP.restart();
+    } else {
+      WebSerial.printf("OTA: Finalize failed: %s\n", Update.errorString());
+      request->send(500, "text/plain", String("Firmware update failed: ") + Update.errorString());
+    }
+  }
+}
+
+void WiFiManagerESP32::onWebAssetsUploadBody(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+  // Can't use applyWebAssetsFromStream() directly — the TAR parser reads 512-byte headers
+  // sequentially from a Stream, but async chunks can split a header across callbacks.
+  // So we buffer the TAR to a temp file, then pass it as a Stream to the parser.
+  static std::atomic<bool>* stopFlag = nullptr;
+  if (index == 0) {
+    if (stopFlag == nullptr)
+      stopFlag = boardDriver->startWaitingAnimation();
+    WebSerial.printf("OTA: Web assets upload started (%d bytes)\n", total);
+    otaTarFile = LittleFS.open("/ota_temp.tar", "w");
+    if (!otaTarFile) {
+      WebSerial.println("OTA: Failed to create temp file");
+      return;
+    }
+  }
+  if (otaTarFile)
+    otaTarFile.write(data, len);
+  if (index + len == total) {
+    if (otaTarFile) {
+      otaTarFile.close();
+      File tarFile = LittleFS.open("/ota_temp.tar", "r");
+      if (tarFile) {
+        size_t tarSize = tarFile.size();
+        bool success = otaUpdater.applyWebAssetsFromStream(tarFile, tarSize);
+        tarFile.close();
+        LittleFS.remove("/ota_temp.tar");
+        if (success)
+          request->send(200, "text/plain", "Web assets updated successfully!");
+        else
+          request->send(500, "text/plain", "Web assets update failed");
+      } else {
+        request->send(500, "text/plain", "Failed to read temp file");
+      }
+    } else {
+      request->send(500, "text/plain", "Upload failed");
+    }
+    if (stopFlag) {
+      stopFlag->store(true);
+      stopFlag = nullptr;
+    }
+  }
+}
+
 void WiFiManagerESP32::handleLogsToggle(AsyncWebServerRequest* request) {
   if (request->hasParam("enabled", true)) {
     String enabledStr = request->getParam("enabled", true)->value();
