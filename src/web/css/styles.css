@@ -1926,20 +1926,23 @@ input[type="submit"]:hover,
 /* Webkit */
 .review-moves::-webkit-scrollbar,
 .game-selector-grid::-webkit-scrollbar,
-.network-list::-webkit-scrollbar {
+.network-list::-webkit-scrollbar,
+.log-terminal::-webkit-scrollbar {
     width: 8px;
 }
 
 .review-moves::-webkit-scrollbar-track,
 .game-selector-grid::-webkit-scrollbar-track,
-.network-list::-webkit-scrollbar-track {
+.network-list::-webkit-scrollbar-track,
+.log-terminal::-webkit-scrollbar-track {
     background: var(--dark2-3);
     border-radius: 4px;
 }
 
 .review-moves::-webkit-scrollbar-thumb,
 .game-selector-grid::-webkit-scrollbar-thumb,
-.network-list::-webkit-scrollbar-thumb {
+.network-list::-webkit-scrollbar-thumb,
+.log-terminal::-webkit-scrollbar-thumb {
     background-color: var(--dark5);
     border-radius: 4px;
     border: 2px solid var(--dark2-3);
@@ -1947,20 +1950,48 @@ input[type="submit"]:hover,
 
 .review-moves::-webkit-scrollbar-thumb:hover,
 .game-selector-grid::-webkit-scrollbar-thumb:hover,
-.network-list::-webkit-scrollbar-thumb:hover {
+.network-list::-webkit-scrollbar-thumb:hover,
+.log-terminal::-webkit-scrollbar-thumb:hover {
     background-color: var(--accent-orange);
 }
 
 /* Firefox */
 .review-moves,
 .game-selector-grid,
-.network-list {
+.network-list,
+.log-terminal {
     scrollbar-width: thin;
     scrollbar-color: var(--dark5) var(--dark2-3);
 }
 
+/* ==========  35. Serial Monitor  =========================================== */
 
-/* ==========  35. Media Queries  ============================================ */
+.log-terminal {
+    background-color: #1e1e1e;
+    color: #00ff00;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    padding: 10px;
+    height: 300px;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid var(--dark4);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.log-terminal.connected {
+    border-color: #4CAF50;
+}
+
+.log-terminal.disconnected {
+    border-color: #f44336;
+    color: #888;
+}
+
+/* ==========  36. Media Queries  ============================================ */
 
 @media (max-width: 425px) {
     .game-action-btn .action-label {
