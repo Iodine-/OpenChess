@@ -286,6 +286,31 @@
             </div>
         </div>
 
+        <!-- Logs Section -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('logs')">
+                <span class="section-icon" id="logs-icon">▶</span>
+                <h3>Logs</h3>
+            </div>
+            <div class="section-content" id="logs-content">
+                <div id="log-terminal" class="log-terminal custom-scrollbar"></div>
+                <div class="log-footer">
+                    <div class="log-follow-toggle">
+                        <label class="toggle-label">Auto-follow</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="logAutoFollow" checked onchange="toggleAutoFollow()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="log-actions">
+                        <button class="log-action-btn" onclick="resetDevice()">Reset Device</button>
+                        <button class="log-action-btn" onclick="copyLogs()">Copy Logs</button>
+                        <button class="log-action-btn" onclick="openLogsFullscreen()">Fullscreen</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Update Available Popup Overlay -->
         <div class="update-overlay" id="updateOverlay">
             <div class="update-popup">
@@ -369,7 +394,8 @@
             lichess: false,
             board: false,
             hwconfig: false,
-            ota: false
+            ota: false,
+            logs: false
         };
 
         function toggleSection(name) {
@@ -398,6 +424,15 @@
             } else {
                 content.classList.remove('expanded');
                 icon.textContent = '▶';
+            }
+
+            // Auto-connect/disconnect logs WebSocket with section expand/collapse
+            if (name === 'logs') {
+                if (sectionStates.logs) {
+                    connectLogsWebSocket();
+                } else {
+                    disconnectLogsWebSocket();
+                }
             }
         }
 
@@ -965,6 +1000,192 @@
             xhr.setRequestHeader('Content-Type', 'application/octet-stream');
             xhr.setRequestHeader('X-File-Name', file.name);
             xhr.send(file);
+        }
+
+        // ========== Logs ==========
+        let logsWs = null;
+        let logsReconnectTimer = null;
+        let logsAutoFollow = true;
+        const logTerminal = document.getElementById('log-terminal');
+
+        function toggleAutoFollow() {
+            logsAutoFollow = document.getElementById('logAutoFollow').checked;
+            if (logsAutoFollow) {
+                logTerminal.scrollTop = logTerminal.scrollHeight;
+            }
+        }
+
+        function connectLogsWebSocket() {
+            if (logsWs && logsWs.readyState !== WebSocket.CLOSED) return;
+
+            const wsUrl = `ws://${window.location.host}/ws/logs`;
+            logsWs = new WebSocket(wsUrl);
+
+            logsWs.onopen = function () {
+                appendLogStatus('Connected', true);
+            };
+
+            logsWs.onmessage = function (event) {
+                appendLogText(event.data);
+            };
+
+            logsWs.onclose = function () {
+                appendLogStatus('Disconnected', false);
+                logsWs = null;
+                // Auto-reconnect if section is still open
+                if (sectionStates.logs) {
+                    logsReconnectTimer = setTimeout(connectLogsWebSocket, 3000);
+                }
+            };
+
+            logsWs.onerror = function () {
+                // onclose fires after this — no separate handling needed
+            };
+        }
+
+        function disconnectLogsWebSocket() {
+            if (logsReconnectTimer) {
+                clearTimeout(logsReconnectTimer);
+                logsReconnectTimer = null;
+            }
+            if (logsWs) {
+                logsWs.close();
+                logsWs = null;
+            }
+        }
+
+        function appendLogText(text) {
+            const span = document.createElement('span');
+            span.className = 'line';
+            span.textContent = text;
+            logTerminal.appendChild(span);
+            autoScroll();
+            trimLog();
+        }
+
+        function appendLogStatus(message, isOk) {
+            const span = document.createElement('span');
+            span.className = 'line ' + (isOk ? 'log-status-ok' : 'log-status-err');
+            span.textContent = '--- ' + message + ' ---\n';
+            logTerminal.appendChild(span);
+            autoScroll();
+        }
+
+        function autoScroll() {
+            if (logsAutoFollow) logTerminal.scrollTop = logTerminal.scrollHeight;
+        }
+
+        function trimLog() {
+            while (logTerminal.childElementCount > 2000) {
+                logTerminal.removeChild(logTerminal.firstChild);
+            }
+        }
+
+        function copyLogs() {
+            var text = logTerminal.innerText;
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(function () {
+                    showAlert('Logs copied to clipboard');
+                });
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showAlert('Logs copied to clipboard');
+            }
+        }
+
+        async function resetDevice() {
+            if (!await showConfirm('Reboot the ESP32? Active games will be interrupted.')) return;
+            fetch('/reboot', { method: 'POST' }).then(function () {
+                appendLogStatus('Reset command sent', true);
+            });
+        }
+
+        function openLogsFullscreen() {
+            const overlay = document.createElement('div');
+            overlay.className = 'log-fullscreen';
+
+            const header = document.createElement('div');
+            header.className = 'log-fullscreen-header';
+            header.innerHTML = '<span>Logs</span>';
+
+            const headerActions = document.createElement('div');
+            headerActions.className = 'log-fullscreen-actions';
+
+            // Auto-follow toggle
+            var followWrap = document.createElement('div');
+            followWrap.className = 'log-follow-toggle';
+            var followLabel = document.createElement('label');
+            followLabel.className = 'toggle-label';
+            followLabel.textContent = 'Auto-follow';
+            var toggleLabel = document.createElement('label');
+            toggleLabel.className = 'toggle-switch';
+            var fsCheckbox = document.createElement('input');
+            fsCheckbox.type = 'checkbox';
+            fsCheckbox.checked = logsAutoFollow;
+            fsCheckbox.onchange = function () {
+                document.getElementById('logAutoFollow').checked = fsCheckbox.checked;
+                toggleAutoFollow();
+                if (logsAutoFollow) body.scrollTop = body.scrollHeight;
+            };
+            var slider = document.createElement('span');
+            slider.className = 'toggle-slider';
+            toggleLabel.appendChild(fsCheckbox);
+            toggleLabel.appendChild(slider);
+            followWrap.appendChild(followLabel);
+            followWrap.appendChild(toggleLabel);
+            headerActions.appendChild(followWrap);
+
+            // Reset button
+            var resetBtn = document.createElement('button');
+            resetBtn.className = 'log-action-btn';
+            resetBtn.textContent = 'Reset Device';
+            resetBtn.onclick = resetDevice;
+            headerActions.appendChild(resetBtn);
+
+            // Copy button
+            var copyBtn = document.createElement('button');
+            copyBtn.className = 'log-action-btn';
+            copyBtn.textContent = 'Copy Logs';
+            copyBtn.onclick = copyLogs;
+            headerActions.appendChild(copyBtn);
+
+            // Close button
+            var closeBtn = document.createElement('button');
+            closeBtn.className = 'log-action-btn';
+            closeBtn.textContent = 'Close';
+            closeBtn.onclick = function () { overlay.remove(); };
+            headerActions.appendChild(closeBtn);
+
+            header.appendChild(headerActions);
+
+            const body = document.createElement('div');
+            body.className = 'log-fullscreen-body custom-scrollbar';
+            body.innerHTML = logTerminal.innerHTML;
+
+            overlay.appendChild(header);
+            overlay.appendChild(body);
+            document.body.appendChild(overlay);
+
+            if (logsAutoFollow) body.scrollTop = body.scrollHeight;
+
+            const observer = new MutationObserver(function () {
+                body.innerHTML = logTerminal.innerHTML;
+                if (logsAutoFollow) body.scrollTop = body.scrollHeight;
+            });
+            observer.observe(logTerminal, { childList: true });
+
+            const origRemove = overlay.remove.bind(overlay);
+            overlay.remove = function () {
+                observer.disconnect();
+                origRemove();
+            };
         }
     </script>
 </body>

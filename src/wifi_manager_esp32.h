@@ -58,6 +58,7 @@ class WiFiManagerESP32 {
  private:
   AsyncWebServer server;
   DNSServer dnsServer;
+  AsyncWebSocket wsLogs;
 
   TaskHandle_t pendingWiFiTaskHandle = nullptr;
   static void pendingWiFiBackgroundTask(void* param);

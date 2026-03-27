@@ -15,7 +15,7 @@ static const IPAddress AP_IP(200, 200, 200, 1);
 static const IPAddress AP_GATEWAY(200, 200, 200, 1);
 static const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(false), profileCount(0), connectedProfileIndex(-1), scanResults(nullptr), scanResultCount(0), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false), otaChecked(false) {
+WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), wsLogs("/ws/logs"), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(false), profileCount(0), connectedProfileIndex(-1), scanResults(nullptr), scanResultCount(0), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false), otaChecked(false) {
   promotion.reset();
   pendingWiFi.reset();
 }
@@ -102,6 +102,17 @@ void WiFiManagerESP32::begin() {
   server.on("/ota/status", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleOtaStatus(request); });
   server.on("/ota/settings", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleOtaSettings(request); });
   server.on("/ota/apply", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleOtaApply(request); });
+  // Reboot endpoint for "Reset Device" button
+  server.on("/reboot", HTTP_POST, [](AsyncWebServerRequest* request) {
+    request->send(200, "text/plain", "Rebooting...");
+    xTaskCreate(
+        [](void*) {
+          delay(500);
+          ESP.restart();
+          vTaskDelete(NULL);
+        },
+        "reboot", 2048, NULL, 1, NULL);
+  });
   // OTA manual upload endpoints - JS sends raw binary body (application/octet-stream), so only the body handler (3rd callback) fires; the multipart file handler (2nd) is unused.
   server.on(
       "/ota/upload/firmware", HTTP_POST,
@@ -122,6 +133,18 @@ void WiFiManagerESP32::begin() {
   server.onNotFound([](AsyncWebServerRequest* request) { request->send(404, "text/plain", "Not Found"); });
   server.begin();
   Serial.println("Web server started on port: " + String(HTTP_PORT));
+
+  // Set up WebSocket for logs
+  wsLogs.onEvent([](AsyncWebSocket* server,
+                    AsyncWebSocketClient* client,
+                    AwsEventType type,
+                    void* arg, uint8_t* data, size_t len) {
+      if (type == WS_EVT_CONNECT) {
+          Logger.sendHistory(client->id());
+      }
+  });
+  server.addHandler(&wsLogs);
+  Logger.setWebSocket(&wsLogs);
 
   xTaskCreate(pendingWiFiBackgroundTask, "WiFi_Pending_Task", 8192, this, 4, &pendingWiFiTaskHandle);
 }
@@ -1132,8 +1155,18 @@ void WiFiManagerESP32::dnsTask(void* param) {
 
 void WiFiManagerESP32::pendingWiFiBackgroundTask(void* param) {
   WiFiManagerESP32* manager = static_cast<WiFiManagerESP32*>(param);
+  unsigned long lastMaintenance = 0;
   while (true) {
     manager->checkPendingWiFi();
+    Logger.flush();
+
+    // Every ~5 seconds: ping clients and free memory from dead WS clients
+    if (millis() - lastMaintenance >= 5000) {
+      lastMaintenance = millis();
+      Logger.ping();
+      Logger.cleanup();
+    }
+
     vTaskDelay(pdMS_TO_TICKS(50));
   }
   vTaskDelete(nullptr);
